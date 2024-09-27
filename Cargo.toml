@@ -1,0 +1,9 @@
+[package]
+name = "beml"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bupropion = "0.0.18"
+miette = "7.2.0"
+thiserror = "1.0.64"

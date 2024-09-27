@@ -1,0 +1,12 @@
+brace_style = "PreferSameLine"
+error_on_unformatted = true
+fn_args_layout = "Compressed"
+fn_call_width = 80
+max_width = 120
+format_macro_bodies = true
+format_macro_matchers = true
+imports_indent = "Visual"
+indent_style = "Visual"
+imports_granularity = "Crate"
+overflow_delimited_expr = true
+reorder_impl_items = true
