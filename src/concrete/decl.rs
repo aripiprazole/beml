@@ -4,7 +4,28 @@ pub struct Defer(pub Box<dyn FnOnce(&mut LoweringCtx) -> miette::Result<abs::Dec
 
 impl LoweringCtx {
     pub fn parse_type_parameter(&mut self, term: Term) -> Vec<Rc<abs::Definition>> {
-        todo!()
+        let mut variables = vec![];
+        match self.clone().parse_type(term) {
+            Ok(abs::Type::VPair(elements)) => {
+                for element in elements {
+                    let abs::Type::Meta(variable) = element else {
+                        self.report_error(TypeSyntaxError);
+                        continue;
+                    };
+                    variables.push(variable);
+                }
+            }
+            Ok(abs::Type::Meta(variable)) => {
+                variables.push(variable);
+            }
+            Ok(_) => {
+                self.report_error(TypeSyntaxError);
+            }
+            Err(err) => {
+                self.report_direct_error(err);
+            }
+        }
+        variables
     }
 
     pub fn parse_constructors(&mut self, constructors: Vec<Term>) -> Vec<abs::Constructor> {
@@ -18,6 +39,11 @@ impl LoweringCtx {
             SrcPos(box term, loc) => {
                 self.src_pos = loc;
                 self.parse_constructor(term)
+            }
+            Constructor(Constructor { name, box type_repr }) => {
+                let name = self.new_constructor(name);
+                let type_repr = self.clone().parse_type(type_repr)?;
+                Ok(abs::Constructor { name, type_repr })
             }
             _ => Err(ConstructorSyntaxError).into_diagnostic(),
         }

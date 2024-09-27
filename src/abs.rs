@@ -64,7 +64,7 @@ pub enum Type {
 #[derive(Debug, Clone)]
 pub struct Constructor {
     pub name: Rc<Definition>,
-    pub parameters: Type,
+    pub type_repr: Type,
 }
 
 #[derive(Debug, Clone)]
