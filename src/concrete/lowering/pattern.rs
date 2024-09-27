@@ -19,10 +19,9 @@ impl LoweringCtx {
             }
             Var(name) => Ok(abs::Variable(self.new_variable(name))),
             App(box term, box arg) => {
-                let abs::Constructor(name, parameters) =
-                    self.parse_pattern(term)
-                        .map_err(|error| PatternConstructorAppError { error: error.into() })
-                        .into_diagnostic()?
+                let abs::Constructor(name, parameters) = self.parse_pattern(term)
+                                                             .map_err(|error| PatternConstructorAppError { error })
+                                                             .into_diagnostic()?
                 else {
                     return Err(ExpectedConstructorError).into_diagnostic();
                 };
