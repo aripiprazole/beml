@@ -1,5 +1,7 @@
 use super::*;
 
+pub struct Defer(pub Box<dyn FnOnce(&mut LoweringCtx) -> miette::Result<abs::Decl>>);
+
 impl LoweringCtx {
     pub fn parse_type_parameter(&mut self, term: Term) -> Vec<Rc<abs::Definition>> {
         todo!()
@@ -21,27 +23,31 @@ impl LoweringCtx {
         }
     }
 
-    pub fn do_declaration_lowering(&mut self, term: Term) -> miette::Result<abs::Decl> {
-        match term {
+    pub fn do_declaration_lowering(&mut self, term: Term) -> miette::Result<Defer> {
+        Ok(match term {
             SrcPos(box term, loc) => {
                 self.src_pos = loc;
-                self.do_declaration_lowering(term)
+                return self.do_declaration_lowering(term);
             }
             TypeDecl(TypeDecl { name,
                                 box variable,
                                 cases, }) => {
+                let src_pos = self.src_pos.clone();
                 let name = self.new_type(name);
                 let variables = self.parse_type_parameter(variable);
                 let cases = self.parse_constructors(cases);
 
-                Ok(abs::Decl::TypeDecl(abs::TypeDecl { name,
-                                                       variables,
-                                                       cases,
-                                                       loc: self.src_pos.clone() }))
+                Defer(Box::new(|ctx| {
+                          Ok(abs::Decl::TypeDecl(abs::TypeDecl { name,
+                                                                 variables,
+                                                                 cases,
+                                                                 loc: src_pos }))
+                      }))
             }
             LetDecl(LetDecl { box pattern,
                               box body,
                               parameters, }) => {
+                let src_pos = self.src_pos.clone();
                 let pattern = self.parse_pattern(pattern)?;
                 let mut ctx = self.clone();
 
@@ -53,29 +59,42 @@ impl LoweringCtx {
                     patterns.push(pattern);
                 }
 
-                let mut body = ctx.clone().do_lowering(body)?;
+                Defer(Box::new(|ctx| {
+                          let mut body = ctx.clone().do_lowering(body)?;
 
-                for pattern in patterns.into_iter() {
-                    let name = ctx.new_fresh_variable();
-                    let default_case = abs::Case { pattern, body };
-                    let new_body = abs::Match(abs::Var(name.clone().use_reference()).into(), vec![default_case]);
-                    body = abs::Fun(name, new_body.into());
-                }
+                          for pattern in patterns.into_iter() {
+                              let name = ctx.new_fresh_variable();
+                              let default_case = abs::Case { pattern, body };
+                              let new_body =
+                                  abs::Match(abs::Var(name.clone().use_reference()).into(), vec![default_case]);
+                              body = abs::Fun(name, new_body.into());
+                          }
 
-                Ok(abs::Decl::LetDecl(abs::LetDecl { name: self.new_fresh_variable(),
-                                                     type_repr: fun_type,
-                                                     body: abs::Value(abs::Match(body.into(), vec![abs::Case { pattern, body: abs::Var(self.new_fresh_variable().use_reference()) }])),
-                                                     loc: self.src_pos.clone() }))
+                          if let abs::Variable(variable) = pattern {
+                              Ok(abs::Decl::LetDecl(abs::LetDecl { name: variable,
+                                                                   type_repr: fun_type,
+                                                                   body: abs::Value(body),
+                                                                   loc: src_pos }))
+                          } else {
+                              Ok(abs::Decl::LetDecl(abs::LetDecl { name: ctx.new_fresh_variable(),
+                                                                     type_repr: fun_type,
+                                                                     body: abs::Value(abs::Match(body.into(), vec![abs::Case { pattern, body: abs::Var(self.new_fresh_variable().use_reference()) }])),
+                                                                     loc: src_pos }))
+                          }
+                      }))
             }
             ValDecl(ValDecl { name, box type_repr }) => {
+                let src_pos = self.src_pos.clone();
                 let name = self.new_variable(name);
-                let type_repr = self.clone().parse_type(type_repr)?;
-                Ok(abs::Decl::LetDecl(abs::LetDecl { name,
-                                                     type_repr,
-                                                     body: abs::No,
-                                                     loc: self.src_pos.clone() }))
+                Defer(Box::new(|ctx| {
+                          let type_repr = self.clone().parse_type(type_repr)?;
+                          Ok(abs::Decl::LetDecl(abs::LetDecl { name,
+                                                               type_repr,
+                                                               body: abs::No,
+                                                               loc: src_pos }))
+                      }))
             }
-            _ => Err(DeclSyntaxError).into_diagnostic(),
-        }
+            _ => return Err(DeclSyntaxError).into_diagnostic(),
+        })
     }
 }

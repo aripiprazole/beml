@@ -319,9 +319,14 @@ impl LoweringCtx {
 pub fn lower_file(file: File) -> miette::Result<abs::File> {
     let mut ctx = LoweringCtx::default();
     let mut declarations = HashMap::new();
-    for decl in file.terms {
-        let decl = ctx.do_declaration_lowering(decl)?;
-        declarations.insert(decl.name(), decl);
+    let terms = file.terms
+                    .into_iter()
+                    .map(|decl| ctx.do_declaration_lowering(decl))
+                    .collect::<miette::Result<Vec<_>>>()?;
+    for decl::Defer(f) in terms {
+        let decl = f(&mut ctx)?;
+
+        declarations.insert(decl.name().clone(), decl);
     }
 
     Ok(abs::File { path: file.path,
