@@ -63,7 +63,7 @@ impl LoweringCtx {
                 let variables = self.parse_type_parameter(variable);
                 let cases = self.parse_constructors(cases);
 
-                Defer(Box::new(|ctx| {
+                Defer(Box::new(|_| {
                           Ok(abs::Decl::TypeDecl(abs::TypeDecl { name,
                                                                  variables,
                                                                  cases,
@@ -104,7 +104,7 @@ impl LoweringCtx {
                           } else {
                               Ok(abs::Decl::LetDecl(abs::LetDecl { name: ctx.new_fresh_variable(),
                                                                      type_repr: fun_type,
-                                                                     body: abs::Value(abs::Match(body.into(), vec![abs::Case { pattern, body: abs::Var(self.new_fresh_variable().use_reference()) }])),
+                                                                     body: abs::Value(abs::Match(body.into(), vec![abs::Case { pattern, body: abs::Var(ctx.new_fresh_variable().use_reference()) }])),
                                                                      loc: src_pos }))
                           }
                       }))
@@ -113,7 +113,7 @@ impl LoweringCtx {
                 let src_pos = self.src_pos.clone();
                 let name = self.new_variable(name);
                 Defer(Box::new(|ctx| {
-                          let type_repr = self.clone().parse_type(type_repr)?;
+                          let type_repr = ctx.clone().parse_type(type_repr)?;
                           Ok(abs::Decl::LetDecl(abs::LetDecl { name,
                                                                type_repr,
                                                                body: abs::No,
