@@ -34,6 +34,14 @@ impl Hash for Definition {
     }
 }
 
+impl Definition {
+    pub fn new(name: &str) -> Rc<Self> {
+        Rc::new(Self { name: crate::loc::Identifier::from(name),
+                       references: Default::default(),
+                       loc: crate::loc::Loc::default() })
+    }
+}
+
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Reference {
     pub name: crate::loc::Identifier,

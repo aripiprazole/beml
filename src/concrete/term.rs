@@ -135,6 +135,9 @@ impl LoweringCtx {
                 let abs::Type::Constructor(callee) = self.clone().parse_type(callee)? else {
                     Err(TypeCalleeIsNotAConstructorError).into_diagnostic()?
                 };
+                if callee.name.text == "local" {
+                    return Ok(abs::Type::Local(argument.into()));
+                }
                 Ok(abs::Type::App(callee, argument.into()))
             }
             Parens(box type_repr) => {

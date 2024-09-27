@@ -7,7 +7,7 @@ use std::{cell::{Cell, RefCell},
           path::PathBuf,
           rc::Rc};
 
-use abs::Declaration;
+use abs::{Declaration, Definition};
 use loc::Text;
 use miette::IntoDiagnostic;
 
@@ -199,7 +199,7 @@ pub enum UnresolvedSymbolError {
     UnresolvedVariableError(UnresolvedVariableError),
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 struct LoweringCtx {
     src_pos: crate::loc::Loc,
     variables: HashMap<Identifier, Rc<abs::Definition>>,
@@ -209,6 +209,21 @@ struct LoweringCtx {
     counter: Rc<Cell<usize>>,
     #[cfg(debug_assertions)]
     gas: Rc<Cell<usize>>,
+}
+
+impl Default for LoweringCtx {
+    fn default() -> Self {
+        Self { src_pos: crate::loc::Loc::default(),
+               variables: Default::default(),
+               constructors: Default::default(),
+               types: HashMap::from([(Identifier::from("int"), Definition::new("int")),
+                                     (Identifier::from("string"), Definition::new("string")),
+                                     (Identifier::from("local"), Definition::new("local"))]),
+               errors: Default::default(),
+               counter: Default::default(),
+               #[cfg(debug_assertions)]
+               gas: Default::default() }
+    }
 }
 
 impl LoweringCtx {
