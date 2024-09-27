@@ -8,6 +8,7 @@ use std::{cell::{Cell, RefCell},
           rc::Rc};
 
 use abs::Declaration;
+use loc::Text;
 use miette::IntoDiagnostic;
 
 pub use Term::*;
@@ -99,6 +100,7 @@ pub enum Term {
     If(If),
     Let(Let),
     Int(i64),
+    Text(Text),
 }
 
 #[derive(Debug)]

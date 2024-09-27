@@ -134,6 +134,7 @@ pub enum Term {
     App(Box<Term>, Box<Term>),
     Var(Reference),
     Int(i64),
+    Text(Text),
     If(Box<Term>, Box<Term>, Box<Term>),
     Let(Rc<Definition>, Box<Term>, Box<Term>),
 }

@@ -104,6 +104,8 @@ impl LoweringCtx {
                 }
             }
 
+            Text(Text { value, loc }) => Ok(abs::Text(Text { value, loc })),
+
             // if x then y else z
             If(If { box condition,
                     box then,
