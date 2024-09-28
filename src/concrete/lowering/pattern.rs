@@ -4,8 +4,8 @@ impl LoweringCtx {
     pub fn parse_pattern(&mut self, case: Term) -> miette::Result<abs::Pattern> {
         match case {
             SrcPos(box term, loc) => {
-                self.src_pos = loc;
-                self.parse_pattern(term)
+                self.src_pos = loc.clone();
+                Ok(abs::PatternSrcPos(self.parse_pattern(term)?.into(), loc))
             }
             Var(name) if name.text.chars().nth(0).unwrap().is_uppercase() => {
                 Ok(match self.lookup_constructor(name.clone()) {

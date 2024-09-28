@@ -75,7 +75,7 @@ pub struct If {
 #[derive(Debug)]
 pub struct Constructor {
     pub name: Identifier,
-    pub type_repr: Box<Term>,
+    pub type_repr: Option<Box<Term>>,
 }
 
 #[derive(Debug)]

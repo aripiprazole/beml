@@ -5,9 +5,8 @@ pub use Decl::*;
 pub use Pattern::*;
 pub use Term::*;
 
-use crate::loc::Text;
-
 pub mod pprint;
+pub mod typing;
 
 pub trait Declaration {
     fn name(&self) -> Rc<Definition>;
@@ -58,27 +57,26 @@ impl Debug for Reference {
 #[derive(Debug, Clone)]
 pub enum Type {
     SrcPos(Box<Type>, crate::loc::Loc),
-    Int,                       // int
-    Pair(Vec<Type>),           // 'a * 'b
-    VPair(Vec<Type>),          // ('a, 'b)
-    Fun(Box<Type>, Box<Type>), // 'a -> 'b
-    App(Reference, Box<Type>), // 'a list
-    Local(Box<Type>),          // 'a local
-    Meta(Rc<Definition>),      // 'a
-    Constructor(Reference),    //  C
+    Pair(Vec<Type>),              // 'a * 'b
+    VPair(Vec<Type>),             // ('a, 'b)
+    Fun(Box<Type>, Box<Type>),    // 'a -> 'b
+    App(Reference, Box<Type>),    // 'a list | ('a, 'b) hashmap
+    Local(Box<Type>),             // 'a local - linear types
+    Meta(crate::loc::Identifier), // 'a | _
+    Constructor(Reference),       //  C
     Hole,
 }
 
 #[derive(Debug, Clone)]
 pub struct Constructor {
     pub name: Rc<Definition>,
-    pub type_repr: Type,
+    pub type_repr: Option<Type>,
 }
 
 #[derive(Debug, Clone)]
 pub struct TypeDecl {
     pub name: Rc<Definition>,
-    pub variables: Vec<Rc<Definition>>,
+    pub variables: Vec<crate::loc::Identifier>,
     pub cases: Vec<Constructor>,
     pub loc: crate::loc::Loc,
 }
@@ -91,7 +89,7 @@ impl Declaration for TypeDecl {
 
 #[derive(Debug, Clone)]
 pub enum Body {
-    External(Text),
+    External(crate::loc::Text),
     Value(Term),
     No,
 }
@@ -142,7 +140,7 @@ pub enum Term {
     App(Box<Term>, Box<Term>),
     Var(Reference),
     Int(i64),
-    Text(Text),
+    Text(crate::loc::Text),
     If(Box<Term>, Box<Term>, Box<Term>),
     Let(Rc<Definition>, Box<Term>, Box<Term>),
 }

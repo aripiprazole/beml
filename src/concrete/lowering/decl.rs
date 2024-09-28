@@ -3,7 +3,7 @@ use super::*;
 pub struct Defer(pub Box<dyn FnOnce(&mut LoweringCtx) -> miette::Result<abs::Decl>>);
 
 impl LoweringCtx {
-    pub fn parse_type_parameter(&mut self, term: Term) -> Vec<Rc<abs::Definition>> {
+    pub fn parse_type_parameter(&mut self, term: Term) -> Vec<crate::loc::Identifier> {
         let mut variables = vec![];
         match self.clone().parse_type(term) {
             Ok(abs::Type::VPair(elements)) => {
@@ -18,12 +18,8 @@ impl LoweringCtx {
             Ok(abs::Type::Meta(variable)) => {
                 variables.push(variable);
             }
-            Ok(_) => {
-                self.report_error(TypeSyntaxError);
-            }
-            Err(err) => {
-                self.report_direct_error(err);
-            }
+            Ok(_) => self.report_error(TypeSyntaxError),
+            Err(err) => self.report_direct_error(err),
         }
         variables
     }
@@ -40,10 +36,16 @@ impl LoweringCtx {
                 self.src_pos = loc;
                 self.parse_constructor(term)
             }
-            Constructor(Constructor { name, box type_repr }) => {
+            Constructor(Constructor { name,
+                                      type_repr: Some(box type_repr), }) => {
                 let name = self.new_constructor(name);
                 let type_repr = self.clone().parse_type(type_repr)?;
-                Ok(abs::Constructor { name, type_repr })
+                Ok(abs::Constructor { name,
+                                      type_repr: Some(type_repr) })
+            }
+            Constructor(Constructor { name, type_repr: None }) => {
+                let name = self.new_constructor(name);
+                Ok(abs::Constructor { name, type_repr: None })
             }
             _ => Err(ConstructorSyntaxError).into_diagnostic(),
         }

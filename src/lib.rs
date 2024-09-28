@@ -1,11 +1,16 @@
 #![feature(box_patterns)]
+#![feature(new_range_api)]
 
 pub mod loc {
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
     pub enum Loc {
         #[default]
         Nowhere,
-        Loc(usize, usize),
+        Loc {
+            startpos: usize,
+            endpos: usize,
+            path: std::path::PathBuf,
+        },
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -36,3 +41,5 @@ pub mod loc {
 pub mod abs;
 pub mod aux;
 pub mod concrete;
+pub mod lexer;
+pub mod parser;

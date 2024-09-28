@@ -129,7 +129,7 @@ impl LoweringCtx {
                 self.src_pos = loc.clone();
                 Ok(abs::Type::SrcPos(self.parse_type(term)?.into(), loc))
             }
-            Meta(name) => Ok(abs::Type::Meta(self.new_variable(name))),
+            Meta(name) => Ok(abs::Type::Meta(name)),
             App(box argument, box callee) => {
                 let argument = self.clone().parse_type(argument)?;
                 let abs::Type::Constructor(callee) = self.clone().parse_type(callee)? else {
