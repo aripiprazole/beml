@@ -36,12 +36,12 @@ enum Lvl {
 }
 
 pub fn decl(p: &mut Parser) -> miette::Result<Term> {
-    match () {
+    close!(p, match () {
         _ if p.check(Token::Let) => let_decl(p),
         _ if p.check(Token::Val) => val_decl(p),
         _ if p.check(Token::Type) => type_decl(p),
         _ => Ok(recover!(p, p.unexpected_token(DECL_FIRST))),
-    }
+    })
 }
 
 fn let_decl(p: &mut Parser) -> miette::Result<Term> {
@@ -96,14 +96,14 @@ fn constructor(p: &mut Parser) -> miette::Result<Term> {
 }
 
 fn expr(p: &mut Parser, level: Lvl, stop_by: &[Token]) -> miette::Result<Term> {
-    match () {
+    close!(p, match () {
         _ if p.check(Token::If) => if_expr(p),
         _ if p.check(Token::Let) => let_expr(p),
         _ if p.check(Token::Match) => match_expr(p),
         _ if p.check(Token::Fun) => fun_expr(p),
         _ if p.check(Token::Function) => function_expr(p),
         _ => ascription(p, level, stop_by),
-    }
+    })
 }
 
 fn ascription(p: &mut Parser, level: Lvl, stop_by: &[Token]) -> miette::Result<Term> {
@@ -298,7 +298,7 @@ fn identifier(p: &mut Parser) -> miette::Result<Identifier> {
 }
 
 fn primary(p: &mut Parser, level: Lvl) -> miette::Result<Term> {
-    match () {
+    close!(p, match () {
         _ if p.check(Token::Int) => {
             let (text, _) = p.eat(Token::Int)?;
             Ok(Int(text.parse().unwrap()))
@@ -320,7 +320,7 @@ fn primary(p: &mut Parser, level: Lvl) -> miette::Result<Term> {
         _ if p.check(Token::LParen) => group_by(p, level, Token::LParen, Token::RParen, Parens),
         _ if p.check(Token::LBracket) => group_by(p, level, Token::LBracket, Token::RBracket, Brackets),
         _ => Ok(recover!(p, p.unexpected_token(EXPR_FIRST))),
-    }
+    })
 }
 
 fn group_by<F>(p: &mut Parser, l: Lvl, initial: Token, end: Token, f: F) -> miette::Result<Term>

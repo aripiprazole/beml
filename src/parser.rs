@@ -136,6 +136,26 @@ impl<'a> Parser<'a> {
     }
 }
 
+macro_rules! close {
+    ($p:expr, $expr:expr) => {{
+        let m = $p.lexer.span();
+        let value = match $expr {
+            Ok(value) => value,
+            Err(err) => return Err(err),
+        };
+        if let SrcPos(_, _) = value {
+            return Ok(value);
+        }
+        let e = $p.lexer.span();
+        let span = Loc::Loc { startpos: m.start,
+                              endpos: e.end,
+                              path: $p.file.clone() };
+        Ok(SrcPos(value.into(), span))
+    }};
+}
+
+pub(crate) use close;
+
 #[cfg(test)]
 mod tests {
     use super::*;
