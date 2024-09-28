@@ -36,15 +36,16 @@ impl LoweringCtx {
                 let src_pos = self.src_pos.clone();
                 let pattern = self.parse_pattern(pattern)?;
 
-                let mut fun_type = abs::Type::Hole;
-                let mut patterns = vec![];
-
                 Defer(Box::new(|ctx| {
+                    let mut fun_type = abs::Type::Hole;
+                    let mut patterns = vec![];
+
                     for parameter in parameters.into_iter().rev() {
                         let (pattern, type_repr) = ctx.parse_parameter(parameter)?;
                         fun_type = abs::Type::Fun(type_repr.into(), fun_type.into());
                         patterns.push(pattern);
                     }
+
                     let mut body = ctx.clone().do_lowering(body)?;
 
                     for pattern in patterns.into_iter() {
@@ -94,7 +95,7 @@ impl LoweringCtx {
     pub fn parse_type_parameter(&mut self, term: Term) -> Vec<crate::loc::Identifier> {
         let mut variables = vec![];
         match self.clone().parse_type(term) {
-            Ok(abs::Type::VPair(elements)) => {
+            Ok(abs::Type::SrcPos(box abs::Type::VPair(elements), _) | abs::Type::VPair(elements)) => {
                 for element in elements {
                     let abs::Type::Meta(variable) = element else {
                         self.report_error(TypeSyntaxError);
@@ -103,7 +104,7 @@ impl LoweringCtx {
                     variables.push(variable);
                 }
             }
-            Ok(abs::Type::Meta(variable)) => {
+            Ok(abs::Type::SrcPos(box abs::Type::Meta(variable), _) | abs::Type::Meta(variable)) => {
                 variables.push(variable);
             }
             Ok(_) => self.report_error(TypeSyntaxError),

@@ -140,16 +140,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_lower() {
-        dbg!(lower_file(
-            Parser::parse(
-                PathBuf::new(),
-                r#"
-            let f x = x
-            "#
-            )
-            .unwrap()
-        )
-        .unwrap());
+    fn test_f_x() {
+        assert!(lower_file(Parser::parse(PathBuf::new(), r#"let f x = x"#).unwrap(),).is_ok());
+    }
+
+    #[test]
+    fn test_type() {
+        assert!(
+            lower_file(Parser::parse(PathBuf::new(), r#"type 'a list = | Nil | Cons of 'a * ('a list)"#).unwrap())
+                .is_ok()
+        );
     }
 }

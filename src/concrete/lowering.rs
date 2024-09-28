@@ -8,9 +8,9 @@ pub mod term;
 #[derive(Clone)]
 pub struct LoweringCtx {
     src_pos: crate::loc::Loc,
-    variables: HashMap<Identifier, Rc<abs::Definition>>,
-    constructors: HashMap<Identifier, Rc<abs::Definition>>,
-    types: HashMap<Identifier, Rc<abs::Definition>>,
+    variables: HashMap<String, Rc<abs::Definition>>,
+    constructors: HashMap<String, Rc<abs::Definition>>,
+    types: HashMap<String, Rc<abs::Definition>>,
     errors: Rc<RefCell<Vec<miette::Report>>>,
     counter: Rc<Cell<usize>>,
     #[cfg(debug_assertions)]
@@ -24,10 +24,10 @@ impl Default for LoweringCtx {
             variables: Default::default(),
             constructors: Default::default(),
             types: HashMap::from([
-                (Identifier::from("int"), Definition::new("int")),
-                (Identifier::from("string"), Definition::new("string")),
-                (Identifier::from("unit"), Definition::new("unit")),
-                (Identifier::from("local"), Definition::new("local")),
+                (String::from("int"), Definition::new("int")),
+                (String::from("string"), Definition::new("string")),
+                (String::from("unit"), Definition::new("unit")),
+                (String::from("local"), Definition::new("local")),
             ]),
             errors: Default::default(),
             counter: Default::default(),
@@ -59,7 +59,7 @@ impl LoweringCtx {
             loc: self.src_pos.clone(),
             references: Default::default(),
         });
-        self.variables.insert(name.clone(), definition.clone());
+        self.variables.insert(name.text.clone(), definition.clone());
         definition
     }
 
@@ -69,7 +69,7 @@ impl LoweringCtx {
             loc: self.src_pos.clone(),
             references: Default::default(),
         });
-        self.constructors.insert(name.clone(), definition.clone());
+        self.constructors.insert(name.text.clone(), definition.clone());
         definition
     }
 
@@ -79,7 +79,7 @@ impl LoweringCtx {
             loc: self.src_pos.clone(),
             references: Default::default(),
         });
-        self.types.insert(name.clone(), definition.clone());
+        self.types.insert(name.text.clone(), definition.clone());
         definition
     }
 
@@ -89,7 +89,7 @@ impl LoweringCtx {
             loc: self.src_pos.clone(),
             references: Default::default(),
         });
-        self.variables.insert(name.clone(), definition.clone());
+        self.variables.insert(name.text.clone(), definition.clone());
         definition
     }
 
@@ -103,11 +103,11 @@ impl LoweringCtx {
     }
 
     fn lookup_variable(&self, name: Identifier) -> Result<Rc<abs::Definition>, UnresolvedVariableError> {
-        self.variables.get(&name).cloned().ok_or(UnresolvedVariableError)
+        self.variables.get(&name.text).cloned().ok_or(UnresolvedVariableError)
     }
 
     fn lookup_type(&self, name: Identifier) -> Result<Rc<abs::Definition>, UnresolvedTypeError> {
-        self.types.get(&name).cloned().ok_or(UnresolvedTypeError)
+        self.types.get(&name.text).cloned().ok_or(UnresolvedTypeError)
     }
 
     fn lookup(&self, name: Identifier) -> Result<Rc<abs::Definition>, UnresolvedSymbolError> {
@@ -118,7 +118,10 @@ impl LoweringCtx {
     }
 
     fn lookup_constructor(&self, name: Identifier) -> Result<Rc<abs::Definition>, UnresolvedConstructorError> {
-        self.constructors.get(&name).cloned().ok_or(UnresolvedConstructorError)
+        self.constructors
+            .get(&name.text)
+            .cloned()
+            .ok_or(UnresolvedConstructorError)
     }
 
     fn or_none<T>(&self, term: miette::Result<T>) -> Option<T> {
