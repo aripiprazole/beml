@@ -111,12 +111,18 @@ impl<'a> Parser<'a> {
             return Err(Eof)?;
         };
         let text = self.lexer.slice();
+        Ok((token, text, self.loc()))
+    }
+
+    pub fn text(&self) -> &str {
+        self.lexer.slice()
+    }
+
+    pub fn loc(&self) -> Loc {
         let range = self.lexer.span();
-        Ok((token,
-            text,
-            Loc::Loc { startpos: range.start,
-                       endpos: range.end,
-                       path: self.file.clone() }))
+        Loc::Loc { startpos: range.start,
+                   endpos: range.end,
+                   path: self.file.clone() }
     }
 
     pub fn bump(&mut self) {
@@ -162,11 +168,82 @@ mod tests {
     use std::path::PathBuf;
 
     #[test]
-    fn test_file() {
+    fn test_val() {
         crate::aux::golden_test! {
-            expected: r#""#,
+            expected:
+r#"Ok(
+    File {
+        path: "",
+        shebang: None,
+        terms: [
+            SrcPos(
+                ValDecl(
+                    ValDecl {
+                        name: Identifier {
+                            text: "println",
+                            loc: Loc {
+                                startpos: 21,
+                                endpos: 28,
+                                path: "",
+                            },
+                        },
+                        type_repr: SrcPos(
+                            BinOp(
+                                SrcPos(
+                                    Var(
+                                        Identifier {
+                                            text: "string",
+                                            loc: Loc {
+                                                startpos: 31,
+                                                endpos: 37,
+                                                path: "",
+                                            },
+                                        },
+                                    ),
+                                    Loc {
+                                        startpos: 31,
+                                        endpos: 40,
+                                        path: "",
+                                    },
+                                ),
+                                Arrow,
+                                SrcPos(
+                                    Var(
+                                        Identifier {
+                                            text: "unit",
+                                            loc: Loc {
+                                                startpos: 41,
+                                                endpos: 45,
+                                                path: "",
+                                            },
+                                        },
+                                    ),
+                                    Loc {
+                                        startpos: 41,
+                                        endpos: 58,
+                                        path: "",
+                                    },
+                                ),
+                            ),
+                            Loc {
+                                startpos: 31,
+                                endpos: 58,
+                                path: "",
+                            },
+                        ),
+                    },
+                ),
+                Loc {
+                    startpos: 17,
+                    endpos: 58,
+                    path: "",
+                },
+            ),
+        ],
+    },
+)"#,
             input: Parser::parse(PathBuf::new(), r#"
-                let f x = x
+                val println : string -> unit
             "#)
         };
     }
@@ -174,7 +251,159 @@ mod tests {
     #[test]
     fn test_type() {
         crate::aux::golden_test! {
-            expected: r#""#,
+            expected:
+r#"Ok(
+    File {
+        path: "",
+        shebang: None,
+        terms: [
+            SrcPos(
+                TypeDecl(
+                    TypeDecl {
+                        name: Identifier {
+                            text: "list",
+                            loc: Loc {
+                                startpos: 25,
+                                endpos: 29,
+                                path: "",
+                            },
+                        },
+                        variable: SrcPos(
+                            Meta(
+                                Identifier {
+                                    text: "a",
+                                    loc: Loc {
+                                        startpos: 22,
+                                        endpos: 24,
+                                        path: "",
+                                    },
+                                },
+                            ),
+                            Loc {
+                                startpos: 22,
+                                endpos: 29,
+                                path: "",
+                            },
+                        ),
+                        cases: [
+                            Constructor(
+                                Constructor {
+                                    name: Identifier {
+                                        text: "Nil",
+                                        loc: Loc {
+                                            startpos: 50,
+                                            endpos: 53,
+                                            path: "",
+                                        },
+                                    },
+                                    type_repr: None,
+                                },
+                            ),
+                            Constructor(
+                                Constructor {
+                                    name: Identifier {
+                                        text: "Cons",
+                                        loc: Loc {
+                                            startpos: 72,
+                                            endpos: 76,
+                                            path: "",
+                                        },
+                                    },
+                                    type_repr: Some(
+                                        SrcPos(
+                                            BinOp(
+                                                SrcPos(
+                                                    Meta(
+                                                        Identifier {
+                                                            text: "a",
+                                                            loc: Loc {
+                                                                startpos: 80,
+                                                                endpos: 82,
+                                                                path: "",
+                                                            },
+                                                        },
+                                                    ),
+                                                    Loc {
+                                                        startpos: 80,
+                                                        endpos: 84,
+                                                        path: "",
+                                                    },
+                                                ),
+                                                Star,
+                                                SrcPos(
+                                                    Parens(
+                                                        SrcPos(
+                                                            App(
+                                                                SrcPos(
+                                                                    Meta(
+                                                                        Identifier {
+                                                                            text: "a",
+                                                                            loc: Loc {
+                                                                                startpos: 86,
+                                                                                endpos: 88,
+                                                                                path: "",
+                                                                            },
+                                                                        },
+                                                                    ),
+                                                                    Loc {
+                                                                        startpos: 86,
+                                                                        endpos: 93,
+                                                                        path: "",
+                                                                    },
+                                                                ),
+                                                                SrcPos(
+                                                                    Var(
+                                                                        Identifier {
+                                                                            text: "list",
+                                                                            loc: Loc {
+                                                                                startpos: 89,
+                                                                                endpos: 93,
+                                                                                path: "",
+                                                                            },
+                                                                        },
+                                                                    ),
+                                                                    Loc {
+                                                                        startpos: 89,
+                                                                        endpos: 94,
+                                                                        path: "",
+                                                                    },
+                                                                ),
+                                                            ),
+                                                            Loc {
+                                                                startpos: 86,
+                                                                endpos: 94,
+                                                                path: "",
+                                                            },
+                                                        ),
+                                                    ),
+                                                    Loc {
+                                                        startpos: 85,
+                                                        endpos: 107,
+                                                        path: "",
+                                                    },
+                                                ),
+                                            ),
+                                            Loc {
+                                                startpos: 80,
+                                                endpos: 107,
+                                                path: "",
+                                            },
+                                        ),
+                                    ),
+                                },
+                            ),
+                        ],
+                    },
+                ),
+                Loc {
+                    startpos: 17,
+                    endpos: 107,
+                    path: "",
+                },
+            ),
+        ],
+    },
+)"#,
             input: Parser::parse(PathBuf::new(), r#"
                 type 'a list =
                 | Nil
@@ -184,11 +413,83 @@ mod tests {
     }
 
     #[test]
-    fn test_val() {
+    fn test_let() {
         crate::aux::golden_test! {
-            expected: r#""#,
+            expected:
+r#"Ok(
+    File {
+        path: "",
+        shebang: None,
+        terms: [
+            SrcPos(
+                LetDecl(
+                    LetDecl {
+                        pattern: SrcPos(
+                            Var(
+                                Identifier {
+                                    text: "f",
+                                    loc: Loc {
+                                        startpos: 21,
+                                        endpos: 22,
+                                        path: "",
+                                    },
+                                },
+                            ),
+                            Loc {
+                                startpos: 21,
+                                endpos: 24,
+                                path: "",
+                            },
+                        ),
+                        parameters: [
+                            SrcPos(
+                                Var(
+                                    Identifier {
+                                        text: "x",
+                                        loc: Loc {
+                                            startpos: 23,
+                                            endpos: 24,
+                                            path: "",
+                                        },
+                                    },
+                                ),
+                                Loc {
+                                    startpos: 23,
+                                    endpos: 26,
+                                    path: "",
+                                },
+                            ),
+                        ],
+                        body: SrcPos(
+                            Var(
+                                Identifier {
+                                    text: "x",
+                                    loc: Loc {
+                                        startpos: 27,
+                                        endpos: 28,
+                                        path: "",
+                                    },
+                                },
+                            ),
+                            Loc {
+                                startpos: 27,
+                                endpos: 41,
+                                path: "",
+                            },
+                        ),
+                    },
+                ),
+                Loc {
+                    startpos: 17,
+                    endpos: 41,
+                    path: "",
+                },
+            ),
+        ],
+    },
+)"#,
             input: Parser::parse(PathBuf::new(), r#"
-                val println : string -> unit
+                let f x = x
             "#)
         };
     }

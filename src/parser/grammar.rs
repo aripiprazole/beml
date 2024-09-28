@@ -87,7 +87,7 @@ fn type_decl(p: &mut Parser) -> miette::Result<Term> {
 fn constructor(p: &mut Parser) -> miette::Result<Term> {
     let name = identifier(p)?;
     if p.check(Token::Of) {
-        expect_or_bail!(p, Token::Of);
+        p.eat(Token::Of)?;
         let type_repr = recover!(p, expr(p, Lvl::Type, &[Token::Bar]));
         return Ok(Constructor(Constructor { name,
                                             type_repr: Some(type_repr.into()) }));
@@ -134,8 +134,10 @@ fn bin_op(p: &mut Parser, level: Lvl, stop_by: &[Token]) -> miette::Result<Term>
 fn equality(p: &mut Parser, level: Lvl, stop_by: &[Token]) -> miette::Result<Term> {
     let mut lhs = recover!(p, comparison(p, level, stop_by));
     while p.at_any(&[Token::Equals, Token::NotEquals]) {
-        let (_, text, loc) = p.next()?;
-        let op = crate::loc::Identifier { text: text.into(), loc };
+        let op = crate::loc::Identifier { text: p.text().into(),
+                                          loc: p.loc() };
+        p.bump();
+
         let rhs = recover!(p, comparison(p, level, stop_by));
         lhs = BinOp(lhs.into(), BinOp::UserDefined(op), rhs.into())
     }
@@ -145,8 +147,10 @@ fn equality(p: &mut Parser, level: Lvl, stop_by: &[Token]) -> miette::Result<Ter
 fn comparison(p: &mut Parser, level: Lvl, stop_by: &[Token]) -> miette::Result<Term> {
     let mut lhs = recover!(p, term(p, level, stop_by));
     while p.at_any(&[Token::Gt, Token::Gte, Token::Lt, Token::Lte]) {
-        let (_, text, loc) = p.next()?;
-        let op = crate::loc::Identifier { text: text.into(), loc };
+        let op = crate::loc::Identifier { text: p.text().into(),
+                                          loc: p.loc() };
+        p.bump();
+
         let rhs = recover!(p, term(p, level, stop_by));
         lhs = BinOp(lhs.into(), BinOp::UserDefined(op), rhs.into())
     }
@@ -156,8 +160,9 @@ fn comparison(p: &mut Parser, level: Lvl, stop_by: &[Token]) -> miette::Result<T
 fn term(p: &mut Parser, level: Lvl, stop_by: &[Token]) -> miette::Result<Term> {
     let mut lhs = recover!(p, factor(p, level, stop_by));
     while p.at_any(&[Token::Sub, Token::Sum]) {
-        let (_, text, loc) = p.next()?;
-        let op = crate::loc::Identifier { text: text.into(), loc };
+        let op = crate::loc::Identifier { text: p.text().into(),
+                                          loc: p.loc() };
+        p.bump();
         let rhs = recover!(p, factor(p, level, stop_by));
         lhs = BinOp(lhs.into(), BinOp::UserDefined(op), rhs.into())
     }
@@ -167,11 +172,15 @@ fn term(p: &mut Parser, level: Lvl, stop_by: &[Token]) -> miette::Result<Term> {
 fn factor(p: &mut Parser, level: Lvl, stop_by: &[Token]) -> miette::Result<Term> {
     let mut lhs = recover!(p, app(p, level, stop_by));
     while p.at_any(&[Token::Star, Token::Div]) {
-        let (k, text, loc) = p.next()?;
+        let (Some(k), text, loc) = (p.curr, p.text(), p.loc()) else {
+            Err(Eof)?
+        };
         let op = match (level, k) {
             (Lvl::Type, Token::Star) => BinOp::Star,
-            (_, _) => BinOp::UserDefined(crate::loc::Identifier { text: text.into(), loc }),
+            (_, Token::Star | Token::Div) => BinOp::UserDefined(crate::loc::Identifier { text: text.into(), loc }),
+            _ => p.unexpected_token(&[Token::Star, Token::Div])?,
         };
+        p.bump();
         let rhs = recover!(p, app(p, level, stop_by));
         lhs = BinOp(lhs.into(), op, rhs.into())
     }
@@ -326,7 +335,7 @@ fn primary(p: &mut Parser, level: Lvl) -> miette::Result<Term> {
 fn group_by<F>(p: &mut Parser, l: Lvl, initial: Token, end: Token, f: F) -> miette::Result<Term>
     where F: FnOnce(Box<Term>) -> Term {
     if p.check(initial) {
-        expect_or_bail!(p, initial);
+        p.eat(initial)?;
         let mut term = recover!(p, expr(p, l, &[Token::Comma]));
         while p.check(Token::Comma) {
             let rhs = recover!(p, expr(p, l, &[Token::Comma, end]));
