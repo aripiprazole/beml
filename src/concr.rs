@@ -9,7 +9,7 @@ use std::{
     rc::Rc,
 };
 
-use abs::{Declaration, Definition};
+use abstr::{Declaration, Definition};
 use miette::IntoDiagnostic;
 
 pub use Term::*;
@@ -111,7 +111,7 @@ pub struct File {
     pub terms: Vec<Term>,
 }
 
-pub fn lower_file(file: File) -> miette::Result<abs::File> {
+pub fn lower_file(file: File) -> miette::Result<abstr::File> {
     let mut ctx = lowering::LoweringCtx::default();
     let mut declarations = HashMap::new();
     let terms = file
@@ -126,7 +126,7 @@ pub fn lower_file(file: File) -> miette::Result<abs::File> {
         declarations.insert(decl.name().name.clone(), decl);
     }
 
-    Ok(abs::File {
+    Ok(abstr::File {
         path: file.path,
         shebang: file.shebang,
         declarations,

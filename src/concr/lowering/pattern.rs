@@ -1,25 +1,25 @@
 use super::*;
 
 impl LoweringCtx {
-    pub fn parse_pattern(&mut self, case: Term) -> miette::Result<abs::Pattern> {
+    pub fn parse_pattern(&mut self, case: Term) -> miette::Result<abstr::Pattern> {
         match case {
             SrcPos(box term, loc) => {
                 self.src_pos = loc.clone();
-                Ok(abs::PatternSrcPos(self.parse_pattern(term)?.into(), loc))
+                Ok(abstr::PatternSrcPos(self.parse_pattern(term)?.into(), loc))
             }
             Var(name) if name.text.chars().nth(0).unwrap().is_uppercase() => {
                 Ok(match self.lookup_constructor(name.clone()) {
-                    Ok(def) => abs::Constructor(def.use_reference(), None),
+                    Ok(def) => abstr::Constructor(def.use_reference(), None),
                     Err(error) => {
                         let definition = self.new_variable(name);
                         self.report_error(UncapitalizeVariableError { error: Some(error) });
-                        abs::Variable(definition)
+                        abstr::Variable(definition)
                     }
                 })
             }
-            Var(name) => Ok(abs::Variable(self.new_variable(name))),
+            Var(name) => Ok(abstr::Variable(self.new_variable(name))),
             App(box term, box arg) => {
-                let abs::Constructor(name, parameters) = self
+                let abstr::Constructor(name, parameters) = self
                     .parse_pattern(term)
                     .map_err(|error| PatternConstructorAppError { error })
                     .into_diagnostic()?
@@ -33,9 +33,9 @@ impl LoweringCtx {
 
                 let parameters = self.parse_pattern(arg)?;
 
-                Ok(abs::Constructor(name, Some(parameters.into())))
+                Ok(abstr::Constructor(name, Some(parameters.into())))
             }
-            Parens(box varargs) => Ok(abs::Elements(
+            Parens(box varargs) => Ok(abstr::Elements(
                 self.sep_by(BinOp::Comma, varargs)?
                     .into_iter()
                     .map(|term| self.parse_pattern(term))
@@ -44,12 +44,12 @@ impl LoweringCtx {
             _ => {
                 self.report_error(UnexpectedPatternSyntaxError);
                 let definition = self.new_variable(Identifier::new("_", self.src_pos.clone()));
-                Ok(abs::Variable(definition))
+                Ok(abstr::Variable(definition))
             }
         }
     }
 
-    pub fn parse_case(mut self, case: Term) -> miette::Result<abs::Case> {
+    pub fn parse_case(mut self, case: Term) -> miette::Result<abstr::Case> {
         self.burn();
 
         match case {
@@ -60,13 +60,13 @@ impl LoweringCtx {
             BinOp(box pattern, BinOp::DoubleArrow, box body) => {
                 let pattern = self.parse_pattern(pattern)?;
                 let body = self.do_lowering(body)?;
-                Ok(abs::Case { pattern, body })
+                Ok(abstr::Case { pattern, body })
             }
             _ => Err(UnexpectedCaseSyntaxError).into_diagnostic(),
         }
     }
 
-    pub fn parse_cases(self, cases: Vec<Term>) -> Vec<abs::Case> {
+    pub fn parse_cases(self, cases: Vec<Term>) -> Vec<abstr::Case> {
         cases
             .into_iter()
             .filter_map(|case| self.or_none(self.clone().parse_case(case)))

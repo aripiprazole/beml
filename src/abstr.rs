@@ -62,7 +62,7 @@ impl Debug for Reference {
 pub enum Type {
     SrcPos(Box<Type>, crate::loc::Loc),
     Pair(Vec<Type>),              // 'a * 'b
-    VPair(Vec<Type>),             // ('a, 'b)
+    Tuple(Vec<Type>),             // ('a, 'b)
     Fun(Box<Type>, Box<Type>),    // 'a -> 'b
     App(Reference, Box<Type>),    // 'a list | ('a, 'b) hashmap
     Local(Box<Type>),             // 'a local - linear types

@@ -1,5 +1,5 @@
 use super::*;
-use crate::concrete::errors::*;
+use crate::concr::errors::*;
 
 pub mod decl;
 pub mod pattern;
@@ -8,9 +8,9 @@ pub mod term;
 #[derive(Clone)]
 pub struct LoweringCtx {
     src_pos: crate::loc::Loc,
-    variables: HashMap<String, Rc<abs::Definition>>,
-    constructors: HashMap<String, Rc<abs::Definition>>,
-    types: HashMap<String, Rc<abs::Definition>>,
+    variables: HashMap<String, Rc<abstr::Definition>>,
+    constructors: HashMap<String, Rc<abstr::Definition>>,
+    types: HashMap<String, Rc<abstr::Definition>>,
     errors: Rc<RefCell<Vec<miette::Report>>>,
     counter: Rc<Cell<usize>>,
     #[cfg(debug_assertions)]
@@ -51,10 +51,10 @@ impl LoweringCtx {
     #[inline(always)]
     fn burn(&self) {}
 
-    fn new_fresh_variable(&mut self) -> Rc<abs::Definition> {
+    fn new_fresh_variable(&mut self) -> Rc<abstr::Definition> {
         self.counter.set(self.counter.get() + 1);
         let name = Identifier::new(&format!("_{}", self.counter.get()), self.src_pos.clone());
-        let definition = Rc::new(abs::Definition {
+        let definition = Rc::new(abstr::Definition {
             name: name.clone(),
             loc: self.src_pos.clone(),
             references: Default::default(),
@@ -63,8 +63,8 @@ impl LoweringCtx {
         definition
     }
 
-    fn new_constructor(&mut self, name: Identifier) -> Rc<abs::Definition> {
-        let definition = Rc::new(abs::Definition {
+    fn new_constructor(&mut self, name: Identifier) -> Rc<abstr::Definition> {
+        let definition = Rc::new(abstr::Definition {
             name: name.clone(),
             loc: self.src_pos.clone(),
             references: Default::default(),
@@ -73,8 +73,8 @@ impl LoweringCtx {
         definition
     }
 
-    fn new_type(&mut self, name: Identifier) -> Rc<abs::Definition> {
-        let definition = Rc::new(abs::Definition {
+    fn new_type(&mut self, name: Identifier) -> Rc<abstr::Definition> {
+        let definition = Rc::new(abstr::Definition {
             name: name.clone(),
             loc: self.src_pos.clone(),
             references: Default::default(),
@@ -83,8 +83,8 @@ impl LoweringCtx {
         definition
     }
 
-    fn new_variable(&mut self, name: Identifier) -> Rc<abs::Definition> {
-        let definition = Rc::new(abs::Definition {
+    fn new_variable(&mut self, name: Identifier) -> Rc<abstr::Definition> {
+        let definition = Rc::new(abstr::Definition {
             name: name.clone(),
             loc: self.src_pos.clone(),
             references: Default::default(),
@@ -102,22 +102,22 @@ impl LoweringCtx {
         self.errors.borrow_mut().push(error);
     }
 
-    fn lookup_variable(&self, name: Identifier) -> Result<Rc<abs::Definition>, UnresolvedVariableError> {
+    fn lookup_variable(&self, name: Identifier) -> Result<Rc<abstr::Definition>, UnresolvedVariableError> {
         self.variables.get(&name.text).cloned().ok_or(UnresolvedVariableError)
     }
 
-    fn lookup_type(&self, name: Identifier) -> Result<Rc<abs::Definition>, UnresolvedTypeError> {
+    fn lookup_type(&self, name: Identifier) -> Result<Rc<abstr::Definition>, UnresolvedTypeError> {
         self.types.get(&name.text).cloned().ok_or(UnresolvedTypeError)
     }
 
-    fn lookup(&self, name: Identifier) -> Result<Rc<abs::Definition>, UnresolvedSymbolError> {
+    fn lookup(&self, name: Identifier) -> Result<Rc<abstr::Definition>, UnresolvedSymbolError> {
         self.lookup_constructor(name.clone())
             .map_err(UnresolvedSymbolError::UnresolvedConstructorError)
             .or_else(|_| self.lookup_variable(name))
             .map_err(UnresolvedSymbolError::UnresolvedVariableError)
     }
 
-    fn lookup_constructor(&self, name: Identifier) -> Result<Rc<abs::Definition>, UnresolvedConstructorError> {
+    fn lookup_constructor(&self, name: Identifier) -> Result<Rc<abstr::Definition>, UnresolvedConstructorError> {
         self.constructors
             .get(&name.text)
             .cloned()

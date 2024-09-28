@@ -1,7 +1,7 @@
 use std::{cell::Cell, path::PathBuf};
 
 use crate::{
-    concrete::{File, Term},
+    concr::{File, Term},
     lexer::Token,
     loc::Loc,
 };

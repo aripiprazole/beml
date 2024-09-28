@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 bupropion = "0.0.18"
+im-rc = "15.1.0"
 logos = "0.14.2"
 miette = "7.2.0"
 thiserror = "1.0.64"
