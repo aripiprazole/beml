@@ -2,10 +2,12 @@ use super::*;
 
 use crate::loc::Identifier;
 
-use std::{cell::{Cell, RefCell},
-          collections::HashMap,
-          path::PathBuf,
-          rc::Rc};
+use std::{
+    cell::{Cell, RefCell},
+    collections::HashMap,
+    path::PathBuf,
+    rc::Rc,
+};
 
 use abs::{Declaration, Definition};
 use miette::IntoDiagnostic;
@@ -112,17 +114,42 @@ pub struct File {
 pub fn lower_file(file: File) -> miette::Result<abs::File> {
     let mut ctx = lowering::LoweringCtx::default();
     let mut declarations = HashMap::new();
-    let terms = file.terms
-                    .into_iter()
-                    .map(|decl| ctx.do_declaration_lowering(decl))
-                    .collect::<miette::Result<Vec<_>>>()?;
+    let terms = file
+        .terms
+        .into_iter()
+        .map(|decl| ctx.do_declaration_lowering(decl))
+        .collect::<miette::Result<Vec<_>>>()?;
     for lowering::decl::Defer(f) in terms {
-        let decl = f(&mut ctx)?;
+        let mut local = ctx.clone();
+        let decl = f(&mut local)?;
 
-        declarations.insert(decl.name().clone(), decl);
+        declarations.insert(decl.name().name.clone(), decl);
     }
 
-    Ok(abs::File { path: file.path,
-                   shebang: file.shebang,
-                   declarations })
+    Ok(abs::File {
+        path: file.path,
+        shebang: file.shebang,
+        declarations,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use parser::Parser;
+
+    use super::*;
+
+    #[test]
+    fn test_lower() {
+        dbg!(lower_file(
+            Parser::parse(
+                PathBuf::new(),
+                r#"
+            let f x = x
+            "#
+            )
+            .unwrap()
+        )
+        .unwrap());
+    }
 }

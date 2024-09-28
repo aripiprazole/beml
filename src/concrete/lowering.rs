@@ -19,16 +19,21 @@ pub struct LoweringCtx {
 
 impl Default for LoweringCtx {
     fn default() -> Self {
-        Self { src_pos: crate::loc::Loc::default(),
-               variables: Default::default(),
-               constructors: Default::default(),
-               types: HashMap::from([(Identifier::from("int"), Definition::new("int")),
-                                     (Identifier::from("string"), Definition::new("string")),
-                                     (Identifier::from("local"), Definition::new("local"))]),
-               errors: Default::default(),
-               counter: Default::default(),
-               #[cfg(debug_assertions)]
-               gas: Default::default() }
+        Self {
+            src_pos: crate::loc::Loc::default(),
+            variables: Default::default(),
+            constructors: Default::default(),
+            types: HashMap::from([
+                (Identifier::from("int"), Definition::new("int")),
+                (Identifier::from("string"), Definition::new("string")),
+                (Identifier::from("unit"), Definition::new("unit")),
+                (Identifier::from("local"), Definition::new("local")),
+            ]),
+            errors: Default::default(),
+            counter: Default::default(),
+            #[cfg(debug_assertions)]
+            gas: Default::default(),
+        }
     }
 }
 
@@ -49,33 +54,41 @@ impl LoweringCtx {
     fn new_fresh_variable(&mut self) -> Rc<abs::Definition> {
         self.counter.set(self.counter.get() + 1);
         let name = Identifier::new(&format!("_{}", self.counter.get()), self.src_pos.clone());
-        let definition = Rc::new(abs::Definition { name: name.clone(),
-                                                   loc: self.src_pos.clone(),
-                                                   references: Default::default() });
+        let definition = Rc::new(abs::Definition {
+            name: name.clone(),
+            loc: self.src_pos.clone(),
+            references: Default::default(),
+        });
         self.variables.insert(name.clone(), definition.clone());
         definition
     }
 
     fn new_constructor(&mut self, name: Identifier) -> Rc<abs::Definition> {
-        let definition = Rc::new(abs::Definition { name: name.clone(),
-                                                   loc: self.src_pos.clone(),
-                                                   references: Default::default() });
+        let definition = Rc::new(abs::Definition {
+            name: name.clone(),
+            loc: self.src_pos.clone(),
+            references: Default::default(),
+        });
         self.constructors.insert(name.clone(), definition.clone());
         definition
     }
 
     fn new_type(&mut self, name: Identifier) -> Rc<abs::Definition> {
-        let definition = Rc::new(abs::Definition { name: name.clone(),
-                                                   loc: self.src_pos.clone(),
-                                                   references: Default::default() });
+        let definition = Rc::new(abs::Definition {
+            name: name.clone(),
+            loc: self.src_pos.clone(),
+            references: Default::default(),
+        });
         self.types.insert(name.clone(), definition.clone());
         definition
     }
 
     fn new_variable(&mut self, name: Identifier) -> Rc<abs::Definition> {
-        let definition = Rc::new(abs::Definition { name: name.clone(),
-                                                   loc: self.src_pos.clone(),
-                                                   references: Default::default() });
+        let definition = Rc::new(abs::Definition {
+            name: name.clone(),
+            loc: self.src_pos.clone(),
+            references: Default::default(),
+        });
         self.variables.insert(name.clone(), definition.clone());
         definition
     }

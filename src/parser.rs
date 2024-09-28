@@ -1,15 +1,17 @@
 use std::{cell::Cell, path::PathBuf};
 
-use crate::{concrete::{File, Term},
-            lexer::Token,
-            loc::Loc};
+use crate::{
+    concrete::{File, Term},
+    lexer::Token,
+    loc::Loc,
+};
 
 pub mod errors;
 pub mod grammar;
 
 use errors::*;
 use logos::Logos;
-use miette::{IntoDiagnostic, NamedSource};
+use miette::NamedSource;
 
 pub struct Parser<'a> {
     file: PathBuf,
@@ -24,13 +26,15 @@ pub struct Parser<'a> {
 
 impl<'a> Parser<'a> {
     pub fn parse(file: PathBuf, text: &str) -> miette::Result<File> {
-        let mut p = Parser { file,
-                             lexer: Token::lexer(text),
-                             curr: None,
-                             errors: vec![],
-                             text: text.into(),
-                             terms: vec![],
-                             gas: Cell::new(0) };
+        let mut p = Parser {
+            file,
+            lexer: Token::lexer(text),
+            curr: None,
+            errors: vec![],
+            text: text.into(),
+            terms: vec![],
+            gas: Cell::new(0),
+        };
 
         p.bump();
         while !p.eof() {
@@ -38,9 +42,11 @@ impl<'a> Parser<'a> {
             p.terms.push(decl);
         }
 
-        Ok(File { terms: p.terms,
-                  path: p.file,
-                  shebang: None })
+        Ok(File {
+            terms: p.terms,
+            path: p.file,
+            shebang: None,
+        })
     }
 
     pub fn report(&mut self, error: miette::Report) {
@@ -70,30 +76,38 @@ impl<'a> Parser<'a> {
         let range = self.lexer.span();
         let text = self.lexer.slice();
         let code = NamedSource::new(self.file.to_str().unwrap_or(""), self.text.clone());
-        let span = Loc::Loc { startpos: range.start,
-                              endpos: range.end,
-                              path: self.file.clone() };
+        let span = Loc::Loc {
+            startpos: range.start,
+            endpos: range.end,
+            path: self.file.clone(),
+        };
         if Some(token) == self.curr {
             self.bump();
             Ok((text, span))
         } else {
-            Err(ExpectedToken { token,
-                                span,
-                                actual: self.curr.unwrap_or(Token::Skip),
-                                code })?
+            Err(ExpectedToken {
+                token,
+                span,
+                actual: self.curr.unwrap_or(Token::Skip),
+                code,
+            })?
         }
     }
 
     pub fn unexpected_token<T>(&self, possibilities: &[Token]) -> miette::Result<T> {
         let range = self.lexer.span();
         let code = NamedSource::new(self.file.to_str().unwrap_or(""), self.text.clone());
-        let span = Loc::Loc { startpos: range.start,
-                              endpos: range.end,
-                              path: self.file.clone() };
-        Err(UnexpectedToken { actual: self.curr.unwrap_or(Token::Skip),
-                              possibilities: possibilities.to_vec(),
-                              span,
-                              code })?
+        let span = Loc::Loc {
+            startpos: range.start,
+            endpos: range.end,
+            path: self.file.clone(),
+        };
+        Err(UnexpectedToken {
+            actual: self.curr.unwrap_or(Token::Skip),
+            possibilities: possibilities.to_vec(),
+            span,
+            code,
+        })?
     }
 
     pub fn check(&mut self, token: Token) -> bool {
@@ -120,9 +134,11 @@ impl<'a> Parser<'a> {
 
     pub fn loc(&self) -> Loc {
         let range = self.lexer.span();
-        Loc::Loc { startpos: range.start,
-                   endpos: range.end,
-                   path: self.file.clone() }
+        Loc::Loc {
+            startpos: range.start,
+            endpos: range.end,
+            path: self.file.clone(),
+        }
     }
 
     pub fn bump(&mut self) {
@@ -153,9 +169,11 @@ macro_rules! close {
             return Ok(value);
         }
         let e = $p.lexer.span();
-        let span = Loc::Loc { startpos: m.start,
-                              endpos: e.end,
-                              path: $p.file.clone() };
+        let span = Loc::Loc {
+            startpos: m.start,
+            endpos: e.end,
+            path: $p.file.clone(),
+        };
         Ok(SrcPos(value.into(), span))
     }};
 }

@@ -19,9 +19,10 @@ impl LoweringCtx {
             }
             Var(name) => Ok(abs::Variable(self.new_variable(name))),
             App(box term, box arg) => {
-                let abs::Constructor(name, parameters) = self.parse_pattern(term)
-                                                             .map_err(|error| PatternConstructorAppError { error })
-                                                             .into_diagnostic()?
+                let abs::Constructor(name, parameters) = self
+                    .parse_pattern(term)
+                    .map_err(|error| PatternConstructorAppError { error })
+                    .into_diagnostic()?
                 else {
                     return Err(ExpectedConstructorError).into_diagnostic();
                 };
@@ -34,10 +35,12 @@ impl LoweringCtx {
 
                 Ok(abs::Constructor(name, Some(parameters.into())))
             }
-            Parens(box varargs) => Ok(abs::Elements(self.sep_by(BinOp::Comma, varargs)?
-                                                        .into_iter()
-                                                        .map(|term| self.parse_pattern(term))
-                                                        .collect::<miette::Result<Vec<_>>>()?)),
+            Parens(box varargs) => Ok(abs::Elements(
+                self.sep_by(BinOp::Comma, varargs)?
+                    .into_iter()
+                    .map(|term| self.parse_pattern(term))
+                    .collect::<miette::Result<Vec<_>>>()?,
+            )),
             _ => {
                 self.report_error(UnexpectedPatternSyntaxError);
                 let definition = self.new_variable(Identifier::new("_", self.src_pos.clone()));
@@ -64,8 +67,9 @@ impl LoweringCtx {
     }
 
     pub fn parse_cases(self, cases: Vec<Term>) -> Vec<abs::Case> {
-        cases.into_iter()
-             .filter_map(|case| self.or_none(self.clone().parse_case(case)))
-             .collect()
+        cases
+            .into_iter()
+            .filter_map(|case| self.or_none(self.clone().parse_case(case)))
+            .collect()
     }
 }

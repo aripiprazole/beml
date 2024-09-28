@@ -43,14 +43,19 @@ impl LoweringCtx {
                 let name = self.lookup(name)?;
                 let lhs = self.clone().do_lowering(lhs)?;
                 let rhs = self.do_lowering(rhs)?;
-                Ok(abs::App(abs::App(abs::Var(name.use_reference()).into(), lhs.into()).into(), rhs.into()))
+                Ok(abs::App(
+                    abs::App(abs::Var(name.use_reference()).into(), lhs.into()).into(),
+                    rhs.into(),
+                ))
             }
 
             // let x y = 1 in x 10
-            Let(Let { box pattern,
-                      parameters,
-                      box body,
-                      box next, }) => {
+            Let(Let {
+                box pattern,
+                parameters,
+                box body,
+                box next,
+            }) => {
                 let pattern = self.parse_pattern(pattern)?;
                 let mut ctx = self.clone();
 
@@ -71,8 +76,10 @@ impl LoweringCtx {
                     body = abs::Fun(name, new_body.into());
                 }
 
-                Ok(abs::Match(abs::Ascription(body.into(), fun_type).into(),
-                              vec![abs::Case { pattern, body: next }]))
+                Ok(abs::Match(abs::Ascription(body.into(), fun_type).into(), vec![abs::Case {
+                    pattern,
+                    body: next,
+                }]))
             }
 
             // f x
@@ -84,20 +91,22 @@ impl LoweringCtx {
 
             // [x, y, z]
             Brackets(box elements) => {
-                let elements = self.sep_by(BinOp::Comma, elements)?
-                                   .into_iter()
-                                   .filter_map(|term| self.or_none(self.clone().do_lowering(term)))
-                                   .collect::<Vec<_>>();
+                let elements = self
+                    .sep_by(BinOp::Comma, elements)?
+                    .into_iter()
+                    .filter_map(|term| self.or_none(self.clone().do_lowering(term)))
+                    .collect::<Vec<_>>();
                 Ok(abs::List(elements))
             }
 
             // (x) or (x, y, z, ..)
             Parens(box value) => {
                 if let BinOp(_, BinOp::Comma, _) = value {
-                    let elements = self.sep_by(BinOp::Comma, value)?
-                                       .into_iter()
-                                       .filter_map(|term| self.or_none(self.clone().do_lowering(term)))
-                                       .collect::<Vec<_>>();
+                    let elements = self
+                        .sep_by(BinOp::Comma, value)?
+                        .into_iter()
+                        .filter_map(|term| self.or_none(self.clone().do_lowering(term)))
+                        .collect::<Vec<_>>();
                     Ok(abs::Pair(elements))
                 } else {
                     self.do_lowering(value) // (x)
@@ -107,9 +116,11 @@ impl LoweringCtx {
             Text(crate::loc::Text { value, loc }) => Ok(abs::Text(crate::loc::Text { value, loc })),
 
             // if x then y else z
-            If(If { box condition,
-                    box then,
-                    box otherwise, }) => {
+            If(If {
+                box condition,
+                box then,
+                box otherwise,
+            }) => {
                 let condition = self.clone().do_lowering(condition)?;
                 let then = self.clone().do_lowering(then)?;
                 let otherwise = self.do_lowering(otherwise)?;
@@ -142,25 +153,28 @@ impl LoweringCtx {
             }
             Parens(box type_repr) => {
                 if let BinOp(_, BinOp::Comma, _) = type_repr {
-                    let type_repr = self.sep_by(BinOp::Comma, type_repr)?
-                                        .into_iter()
-                                        .filter_map(|term| self.or_none(self.clone().parse_type(term)))
-                                        .collect::<Vec<_>>();
+                    let type_repr = self
+                        .sep_by(BinOp::Comma, type_repr)?
+                        .into_iter()
+                        .filter_map(|term| self.or_none(self.clone().parse_type(term)))
+                        .collect::<Vec<_>>();
                     Ok(abs::Type::VPair(type_repr))
                 } else {
                     self.parse_type(type_repr) // (x)
                 }
             }
             BinOp(_, BinOp::Star, _) => {
-                let elements = self.sep_by(BinOp::Star, term)?
-                                   .into_iter()
-                                   .filter_map(|term| self.or_none(self.clone().parse_type(term)))
-                                   .collect::<Vec<_>>();
+                let elements = self
+                    .sep_by(BinOp::Star, term)?
+                    .into_iter()
+                    .filter_map(|term| self.or_none(self.clone().parse_type(term)))
+                    .collect::<Vec<_>>();
                 Ok(abs::Type::Pair(elements))
             }
-            Var(name) => self.lookup_type(name)
-                             .map(|definition| abs::Type::Constructor(definition.use_reference()))
-                             .into_diagnostic(),
+            Var(name) => self
+                .lookup_type(name)
+                .map(|definition| abs::Type::Constructor(definition.use_reference()))
+                .into_diagnostic(),
             _ => Err(TypeSyntaxError).into_diagnostic(),
         }
     }

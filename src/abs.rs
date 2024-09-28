@@ -5,6 +5,8 @@ pub use Decl::*;
 pub use Pattern::*;
 pub use Term::*;
 
+use crate::loc::Identifier;
+
 pub mod pprint;
 pub mod typing;
 
@@ -35,9 +37,11 @@ impl Hash for Definition {
 
 impl Definition {
     pub fn new(name: &str) -> Rc<Self> {
-        Rc::new(Self { name: crate::loc::Identifier::from(name),
-                       references: Default::default(),
-                       loc: crate::loc::Loc::default() })
+        Rc::new(Self {
+            name: crate::loc::Identifier::from(name),
+            references: Default::default(),
+            loc: crate::loc::Loc::default(),
+        })
     }
 }
 
@@ -157,14 +161,16 @@ pub enum Pattern {
 pub struct File {
     pub path: PathBuf,
     pub shebang: Option<String>,
-    pub declarations: HashMap<Rc<Definition>, Decl>,
+    pub declarations: HashMap<Identifier, Decl>,
 }
 
 impl Definition {
     pub fn use_reference(self: Rc<Self>) -> Reference {
-        let reference = Reference { name: self.name.clone(),
-                                    loc: self.loc.clone(),
-                                    definition: self.clone() };
+        let reference = Reference {
+            name: self.name.clone(),
+            loc: self.loc.clone(),
+            definition: self.clone(),
+        };
         self.references.borrow_mut().push(reference.clone());
         reference
     }

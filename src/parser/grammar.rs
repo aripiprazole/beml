@@ -1,31 +1,35 @@
 use super::*;
 use crate::{concrete::*, loc::Identifier};
 
-const EXPR_FIRST: &[Token] = &[Token::Let,
-                               Token::Match,
-                               Token::Function,
-                               Token::If,
-                               Token::Int,
-                               Token::Ident,
-                               Token::Text,
-                               Token::LParen,
-                               Token::LBracket];
+const EXPR_FIRST: &[Token] = &[
+    Token::Let,
+    Token::Match,
+    Token::Function,
+    Token::If,
+    Token::Int,
+    Token::Ident,
+    Token::Text,
+    Token::LParen,
+    Token::LBracket,
+];
 
 const DECL_FIRST: &[Token] = &[Token::Let, Token::Type, Token::Val];
 
-const INFIX_OPERATORS: &[Token] = &[Token::Gt,
-                                    Token::Gte,
-                                    Token::Lt,
-                                    Token::Lte,
-                                    Token::Equals,
-                                    Token::NotEquals,
-                                    Token::Star,
-                                    Token::Arrow,
-                                    Token::DoubleArrow,
-                                    Token::Sum,
-                                    Token::Sub,
-                                    Token::Star,
-                                    Token::Div];
+const INFIX_OPERATORS: &[Token] = &[
+    Token::Gt,
+    Token::Gte,
+    Token::Lt,
+    Token::Lte,
+    Token::Equals,
+    Token::NotEquals,
+    Token::Star,
+    Token::Arrow,
+    Token::DoubleArrow,
+    Token::Sum,
+    Token::Sub,
+    Token::Star,
+    Token::Div,
+];
 
 const PRIMARY_FIRST: &[Token] = &[Token::Int, Token::Ident, Token::Text, Token::LParen, Token::LBracket];
 
@@ -50,9 +54,11 @@ fn let_decl(p: &mut Parser) -> miette::Result<Term> {
     let parameters = parameters(p, Token::Equals)?;
     let body = recover!(p, expr(p, Lvl::Term, DECL_FIRST));
 
-    Ok(LetDecl(LetDecl { pattern: pattern.into(),
-                         body: body.into(),
-                         parameters }))
+    Ok(LetDecl(LetDecl {
+        pattern: pattern.into(),
+        body: body.into(),
+        parameters,
+    }))
 }
 
 fn val_decl(p: &mut Parser) -> miette::Result<Term> {
@@ -60,8 +66,10 @@ fn val_decl(p: &mut Parser) -> miette::Result<Term> {
     let name = identifier(p)?;
     expect_or_bail!(p, Token::Colon);
     let type_repr = recover!(p, expr(p, Lvl::Type, DECL_FIRST));
-    Ok(ValDecl(ValDecl { name,
-                         type_repr: type_repr.into() }))
+    Ok(ValDecl(ValDecl {
+        name,
+        type_repr: type_repr.into(),
+    }))
 }
 
 fn type_decl(p: &mut Parser) -> miette::Result<Term> {
@@ -79,9 +87,11 @@ fn type_decl(p: &mut Parser) -> miette::Result<Term> {
         let constructor = recover!(p, constructor(p));
         cases.push(constructor);
     }
-    Ok(TypeDecl(TypeDecl { name,
-                           cases,
-                           variable: variable.into() }))
+    Ok(TypeDecl(TypeDecl {
+        name,
+        cases,
+        variable: variable.into(),
+    }))
 }
 
 fn constructor(p: &mut Parser) -> miette::Result<Term> {
@@ -89,8 +99,10 @@ fn constructor(p: &mut Parser) -> miette::Result<Term> {
     if p.check(Token::Of) {
         p.eat(Token::Of)?;
         let type_repr = recover!(p, expr(p, Lvl::Type, &[Token::Bar]));
-        return Ok(Constructor(Constructor { name,
-                                            type_repr: Some(type_repr.into()) }));
+        return Ok(Constructor(Constructor {
+            name,
+            type_repr: Some(type_repr.into()),
+        }));
     }
     Ok(Constructor(Constructor { name, type_repr: None }))
 }
@@ -134,8 +146,10 @@ fn bin_op(p: &mut Parser, level: Lvl, stop_by: &[Token]) -> miette::Result<Term>
 fn equality(p: &mut Parser, level: Lvl, stop_by: &[Token]) -> miette::Result<Term> {
     let mut lhs = recover!(p, comparison(p, level, stop_by));
     while p.at_any(&[Token::Equals, Token::NotEquals]) {
-        let op = crate::loc::Identifier { text: p.text().into(),
-                                          loc: p.loc() };
+        let op = crate::loc::Identifier {
+            text: p.text().into(),
+            loc: p.loc(),
+        };
         p.bump();
 
         let rhs = recover!(p, comparison(p, level, stop_by));
@@ -147,8 +161,10 @@ fn equality(p: &mut Parser, level: Lvl, stop_by: &[Token]) -> miette::Result<Ter
 fn comparison(p: &mut Parser, level: Lvl, stop_by: &[Token]) -> miette::Result<Term> {
     let mut lhs = recover!(p, term(p, level, stop_by));
     while p.at_any(&[Token::Gt, Token::Gte, Token::Lt, Token::Lte]) {
-        let op = crate::loc::Identifier { text: p.text().into(),
-                                          loc: p.loc() };
+        let op = crate::loc::Identifier {
+            text: p.text().into(),
+            loc: p.loc(),
+        };
         p.bump();
 
         let rhs = recover!(p, term(p, level, stop_by));
@@ -160,8 +176,10 @@ fn comparison(p: &mut Parser, level: Lvl, stop_by: &[Token]) -> miette::Result<T
 fn term(p: &mut Parser, level: Lvl, stop_by: &[Token]) -> miette::Result<Term> {
     let mut lhs = recover!(p, factor(p, level, stop_by));
     while p.at_any(&[Token::Sub, Token::Sum]) {
-        let op = crate::loc::Identifier { text: p.text().into(),
-                                          loc: p.loc() };
+        let op = crate::loc::Identifier {
+            text: p.text().into(),
+            loc: p.loc(),
+        };
         p.bump();
         let rhs = recover!(p, factor(p, level, stop_by));
         lhs = BinOp(lhs.into(), BinOp::UserDefined(op), rhs.into())
@@ -194,9 +212,11 @@ fn if_expr(p: &mut Parser) -> miette::Result<Term> {
     let then = recover!(p, expr(p, Lvl::Term, &[Token::Else]));
     expect_or_bail!(p, Token::Else);
     let otherwise = recover!(p, expr(p, Lvl::Term, &[]));
-    Ok(If(If { condition: condition.into(),
-               then: then.into(),
-               otherwise: otherwise.into() }))
+    Ok(If(If {
+        condition: condition.into(),
+        then: then.into(),
+        otherwise: otherwise.into(),
+    }))
 }
 
 fn let_expr(p: &mut Parser) -> miette::Result<Term> {
@@ -206,10 +226,12 @@ fn let_expr(p: &mut Parser) -> miette::Result<Term> {
     let body = recover!(p, expr(p, Lvl::Term, &[Token::In]));
     expect_or_bail!(p, Token::In);
     let next = recover!(p, expr(p, Lvl::Term, &[]));
-    Ok(Let(Let { pattern: pattern.into(),
-                 parameters,
-                 body: body.into(),
-                 next: next.into() }))
+    Ok(Let(Let {
+        pattern: pattern.into(),
+        parameters,
+        body: body.into(),
+        next: next.into(),
+    }))
 }
 
 fn function_expr(p: &mut Parser) -> miette::Result<Term> {
@@ -239,8 +261,10 @@ fn match_expr(p: &mut Parser) -> miette::Result<Term> {
         let case = recover!(p, expr(p, Lvl::Term, &[Token::Bar]));
         cases.push(case);
     }
-    Ok(Match(Match { scrutinee: scrutinee.into(),
-                     cases }))
+    Ok(Match(Match {
+        scrutinee: scrutinee.into(),
+        cases,
+    }))
 }
 
 fn fun_expr(p: &mut Parser) -> miette::Result<Term> {
@@ -318,13 +342,17 @@ fn primary(p: &mut Parser, level: Lvl) -> miette::Result<Term> {
         }
         _ if p.check(Token::Meta) => {
             let (text, loc) = p.eat(Token::Meta)?;
-            Ok(Meta(crate::loc::Identifier { text: text[1..text.len()].into(),
-                                             loc }))
+            Ok(Meta(crate::loc::Identifier {
+                text: text[1..text.len()].into(),
+                loc,
+            }))
         }
         _ if p.check(Token::Text) => {
             let (text, loc) = p.eat(Token::Text)?;
-            Ok(Text(crate::loc::Text { value: text[1..text.len() - 1].into(),
-                                       loc }))
+            Ok(Text(crate::loc::Text {
+                value: text[1..text.len() - 1].into(),
+                loc,
+            }))
         }
         _ if p.check(Token::LParen) => group_by(p, level, Token::LParen, Token::RParen, Parens),
         _ if p.check(Token::LBracket) => group_by(p, level, Token::LBracket, Token::RBracket, Brackets),
@@ -333,7 +361,8 @@ fn primary(p: &mut Parser, level: Lvl) -> miette::Result<Term> {
 }
 
 fn group_by<F>(p: &mut Parser, l: Lvl, initial: Token, end: Token, f: F) -> miette::Result<Term>
-    where F: FnOnce(Box<Term>) -> Term {
+where
+    F: FnOnce(Box<Term>) -> Term, {
     if p.check(initial) {
         p.eat(initial)?;
         let mut term = recover!(p, expr(p, l, &[Token::Comma]));
@@ -353,13 +382,15 @@ mod tests {
     use super::*;
 
     fn parse(text: &str, f: impl FnOnce(&mut Parser) -> miette::Result<Term>) -> miette::Result<Term> {
-        let mut p = Parser { file: PathBuf::new(),
-                             lexer: Token::lexer(text),
-                             curr: None,
-                             text: text.into(),
-                             errors: vec![],
-                             terms: vec![],
-                             gas: Cell::new(0) };
+        let mut p = Parser {
+            file: PathBuf::new(),
+            lexer: Token::lexer(text),
+            curr: None,
+            text: text.into(),
+            errors: vec![],
+            terms: vec![],
+            gas: Cell::new(0),
+        };
         p.next()?;
         f(&mut p)
     }
