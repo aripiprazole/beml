@@ -1,4 +1,12 @@
-use std::{cell::RefCell, collections::HashMap, fmt::Debug, hash::Hash, path::PathBuf, rc::Rc};
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    fmt::Debug,
+    hash::Hash,
+    path::PathBuf,
+    rc::Rc,
+    sync::{Arc, RwLock},
+};
 
 pub use Body::*;
 pub use Decl::*;
@@ -11,13 +19,13 @@ pub mod pprint;
 pub mod typing;
 
 pub trait Declaration {
-    fn name(&self) -> Rc<Definition>;
+    fn name(&self) -> Arc<Definition>;
 }
 
 #[derive(Debug, Clone)]
 pub struct Definition {
     pub name: crate::loc::Identifier,
-    pub references: Rc<RefCell<Vec<Reference>>>,
+    pub references: Arc<RwLock<Vec<Reference>>>,
     pub loc: crate::loc::Loc,
 }
 
@@ -36,8 +44,8 @@ impl Hash for Definition {
 }
 
 impl Definition {
-    pub fn new(name: &str) -> Rc<Self> {
-        Rc::new(Self {
+    pub fn new(name: &str) -> Arc<Self> {
+        Arc::new(Self {
             name: crate::loc::Identifier::from(name),
             references: Default::default(),
             loc: crate::loc::Loc::default(),
@@ -48,7 +56,7 @@ impl Definition {
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Reference {
     pub name: crate::loc::Identifier,
-    pub definition: Rc<Definition>,
+    pub definition: Arc<Definition>,
     pub loc: crate::loc::Loc,
 }
 
@@ -73,20 +81,20 @@ pub enum Type {
 
 #[derive(Debug, Clone)]
 pub struct Constructor {
-    pub name: Rc<Definition>,
+    pub name: Arc<Definition>,
     pub type_repr: Option<Type>,
 }
 
 #[derive(Debug, Clone)]
 pub struct TypeDecl {
-    pub name: Rc<Definition>,
+    pub name: Arc<Definition>,
     pub variables: Vec<crate::loc::Identifier>,
     pub cases: Vec<Constructor>,
     pub loc: crate::loc::Loc,
 }
 
 impl Declaration for TypeDecl {
-    fn name(&self) -> Rc<Definition> {
+    fn name(&self) -> Arc<Definition> {
         self.name.clone()
     }
 }
@@ -100,14 +108,14 @@ pub enum Body {
 
 #[derive(Debug, Clone)]
 pub struct LetDecl {
-    pub name: Rc<Definition>,
+    pub name: Arc<Definition>,
     pub type_repr: Type,
     pub body: Body,
     pub loc: crate::loc::Loc,
 }
 
 impl Declaration for LetDecl {
-    fn name(&self) -> Rc<Definition> {
+    fn name(&self) -> Arc<Definition> {
         self.name.clone()
     }
 }
@@ -119,7 +127,7 @@ pub enum Decl {
 }
 
 impl Declaration for Decl {
-    fn name(&self) -> Rc<Definition> {
+    fn name(&self) -> Arc<Definition> {
         match self {
             Decl::TypeDecl(decl) => decl.name(),
             Decl::LetDecl(decl) => decl.name(),
@@ -138,7 +146,7 @@ pub enum Term {
     SrcPos(Box<Term>, crate::loc::Loc),
     List(Vec<Term>),
     Pair(Vec<Term>),
-    Fun(Rc<Definition>, Box<Term>),
+    Fun(Arc<Definition>, Box<Term>),
     Match(Box<Term>, Vec<Case>),
     Ascription(Box<Term>, Type),
     App(Box<Term>, Box<Term>),
@@ -146,7 +154,7 @@ pub enum Term {
     Int(i64),
     Text(crate::loc::Text),
     If(Box<Term>, Box<Term>, Box<Term>),
-    Let(Rc<Definition>, Box<Term>, Box<Term>),
+    Let(Arc<Definition>, Box<Term>, Box<Term>),
 }
 
 #[derive(Debug, Clone)]
@@ -154,7 +162,7 @@ pub enum Pattern {
     PatternSrcPos(Box<Pattern>, crate::loc::Loc),
     Constructor(Reference, Option<Box<Pattern>>),
     Elements(Vec<Pattern>),
-    Variable(Rc<Definition>),
+    Variable(Arc<Definition>),
 }
 
 #[derive(Debug, Clone)]
@@ -165,13 +173,13 @@ pub struct File {
 }
 
 impl Definition {
-    pub fn use_reference(self: Rc<Self>) -> Reference {
+    pub fn use_reference(self: Arc<Self>) -> Reference {
         let reference = Reference {
             name: self.name.clone(),
             loc: self.loc.clone(),
             definition: self.clone(),
         };
-        self.references.borrow_mut().push(reference.clone());
+        self.references.write().unwrap().push(reference.clone());
         reference
     }
 }
