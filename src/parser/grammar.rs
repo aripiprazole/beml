@@ -37,15 +37,15 @@ enum Lvl {
 
 pub fn decl(p: &mut Parser) -> miette::Result<Term> {
     match () {
-        _ if p.check(Token::Let)? => let_decl(p),
-        _ if p.check(Token::Val)? => val_decl(p),
-        _ if p.check(Token::Type)? => type_decl(p),
+        _ if p.check(Token::Let) => let_decl(p),
+        _ if p.check(Token::Val) => val_decl(p),
+        _ if p.check(Token::Type) => type_decl(p),
         _ => Ok(recover!(p, p.unexpected_token(DECL_FIRST))),
     }
 }
 
 fn let_decl(p: &mut Parser) -> miette::Result<Term> {
-    p.expect(Token::Let)?;
+    expect_or_bail!(p, Token::Let);
     let pattern = recover!(p, primary(p, Lvl::Term));
     let parameters = parameters(p, Token::Equals)?;
     let body = recover!(p, expr(p, Lvl::Term, DECL_FIRST));
@@ -56,26 +56,26 @@ fn let_decl(p: &mut Parser) -> miette::Result<Term> {
 }
 
 fn val_decl(p: &mut Parser) -> miette::Result<Term> {
-    p.expect(Token::Val)?;
+    expect_or_bail!(p, Token::Val);
     let name = identifier(p)?;
-    p.expect(Token::Colon)?;
+    expect_or_bail!(p, Token::Colon);
     let type_repr = recover!(p, expr(p, Lvl::Type, DECL_FIRST));
     Ok(ValDecl(ValDecl { name,
                          type_repr: type_repr.into() }))
 }
 
 fn type_decl(p: &mut Parser) -> miette::Result<Term> {
-    p.expect(Token::Type)?;
+    expect_or_bail!(p, Token::Type);
     let variable = recover!(p, expr(p, Lvl::Type, &[Token::Ident]));
     let name = identifier(p)?;
-    p.expect(Token::Equals)?;
-    if p.check(Token::Bar)? {
-        p.eat(Token::Bar).expect("expecting |");
+    expect_or_bail!(p, Token::Equals);
+    if p.check(Token::Bar) {
+        p.eat(Token::Bar)?;
     }
     let mut cases = vec![recover!(p, constructor(p))];
 
     while p.at_any(&[Token::Bar]) {
-        p.expect(Token::Bar).expect("expecting |");
+        p.eat(Token::Bar)?;
         let constructor = recover!(p, constructor(p));
         cases.push(constructor);
     }
@@ -86,8 +86,8 @@ fn type_decl(p: &mut Parser) -> miette::Result<Term> {
 
 fn constructor(p: &mut Parser) -> miette::Result<Term> {
     let name = identifier(p)?;
-    if p.check(Token::Of)? {
-        p.expect(Token::Of)?;
+    if p.check(Token::Of) {
+        expect_or_bail!(p, Token::Of);
         let type_repr = recover!(p, expr(p, Lvl::Type, &[Token::Bar]));
         return Ok(Constructor(Constructor { name,
                                             type_repr: Some(type_repr.into()) }));
@@ -97,11 +97,11 @@ fn constructor(p: &mut Parser) -> miette::Result<Term> {
 
 fn expr(p: &mut Parser, level: Lvl, stop_by: &[Token]) -> miette::Result<Term> {
     match () {
-        _ if p.check(Token::If)? => if_expr(p),
-        _ if p.check(Token::Let)? => let_expr(p),
-        _ if p.check(Token::Match)? => match_expr(p),
-        _ if p.check(Token::Fun)? => fun_expr(p),
-        _ if p.check(Token::Function)? => function_expr(p),
+        _ if p.check(Token::If) => if_expr(p),
+        _ if p.check(Token::Let) => let_expr(p),
+        _ if p.check(Token::Match) => match_expr(p),
+        _ if p.check(Token::Fun) => fun_expr(p),
+        _ if p.check(Token::Function) => function_expr(p),
         _ => ascription(p, level, stop_by),
     }
 }
@@ -109,7 +109,7 @@ fn expr(p: &mut Parser, level: Lvl, stop_by: &[Token]) -> miette::Result<Term> {
 fn ascription(p: &mut Parser, level: Lvl, stop_by: &[Token]) -> miette::Result<Term> {
     let mut lhs = recover!(p, bin_op(p, level, stop_by));
     while p.at_any(&[Token::Colon]) {
-        p.expect(Token::Colon)?;
+        p.eat(Token::Colon)?;
         let rhs = recover!(p, bin_op(p, Lvl::Type, stop_by));
         lhs = BinOp(lhs.into(), BinOp::Colon, rhs.into())
     }
@@ -179,11 +179,11 @@ fn factor(p: &mut Parser, level: Lvl, stop_by: &[Token]) -> miette::Result<Term>
 }
 
 fn if_expr(p: &mut Parser) -> miette::Result<Term> {
-    p.expect(Token::If)?;
+    expect_or_bail!(p, Token::If);
     let condition = recover!(p, expr(p, Lvl::Term, &[Token::Then]));
-    p.expect(Token::Then)?;
+    expect_or_bail!(p, Token::Then);
     let then = recover!(p, expr(p, Lvl::Term, &[Token::Else]));
-    p.expect(Token::Else)?;
+    expect_or_bail!(p, Token::Else);
     let otherwise = recover!(p, expr(p, Lvl::Term, &[]));
     Ok(If(If { condition: condition.into(),
                then: then.into(),
@@ -191,11 +191,11 @@ fn if_expr(p: &mut Parser) -> miette::Result<Term> {
 }
 
 fn let_expr(p: &mut Parser) -> miette::Result<Term> {
-    p.expect(Token::Let)?;
+    expect_or_bail!(p, Token::Let);
     let pattern = recover!(p, primary(p, Lvl::Term));
     let parameters = parameters(p, Token::Equals)?;
     let body = recover!(p, expr(p, Lvl::Term, &[Token::In]));
-    p.expect(Token::In)?;
+    expect_or_bail!(p, Token::In);
     let next = recover!(p, expr(p, Lvl::Term, &[]));
     Ok(Let(Let { pattern: pattern.into(),
                  parameters,
@@ -204,13 +204,13 @@ fn let_expr(p: &mut Parser) -> miette::Result<Term> {
 }
 
 fn function_expr(p: &mut Parser) -> miette::Result<Term> {
-    p.expect(Token::Function)?;
-    if p.check(Token::Bar)? {
-        p.eat(Token::Bar).expect("expecting |");
+    expect_or_bail!(p, Token::Function);
+    if p.check(Token::Bar) {
+        p.eat(Token::Bar)?;
     }
     let mut cases = vec![recover!(p, expr(p, Lvl::Term, &[Token::Bar]))];
     while p.at_any(&[Token::Bar]) {
-        p.expect(Token::Bar).unwrap();
+        p.eat(Token::Bar)?;
         let case = recover!(p, expr(p, Lvl::Term, &[Token::Bar]));
         cases.push(case);
     }
@@ -218,15 +218,15 @@ fn function_expr(p: &mut Parser) -> miette::Result<Term> {
 }
 
 fn match_expr(p: &mut Parser) -> miette::Result<Term> {
-    p.expect(Token::Match)?;
+    expect_or_bail!(p, Token::Match);
     let scrutinee = recover!(p, expr(p, Lvl::Term, &[Token::With]));
-    p.expect(Token::With)?;
-    if p.check(Token::Bar)? {
-        p.eat(Token::Bar).expect("expecting |");
+    expect_or_bail!(p, Token::With);
+    if p.check(Token::Bar) {
+        p.eat(Token::Bar)?;
     }
     let mut cases = vec![recover!(p, expr(p, Lvl::Term, &[Token::Bar]))];
     while p.at_any(&[Token::Bar]) {
-        p.expect(Token::Bar).unwrap();
+        p.eat(Token::Bar)?;
         let case = recover!(p, expr(p, Lvl::Term, &[Token::Bar]));
         cases.push(case);
     }
@@ -235,13 +235,13 @@ fn match_expr(p: &mut Parser) -> miette::Result<Term> {
 }
 
 fn fun_expr(p: &mut Parser) -> miette::Result<Term> {
-    p.expect(Token::Fun)?;
+    expect_or_bail!(p, Token::Fun);
     let mut parameters = vec![];
-    while p.check(Token::Ident)? {
+    while p.check(Token::Ident) {
         let (_, text, loc) = p.next()?;
         parameters.push(crate::loc::Identifier { text: text.into(), loc })
     }
-    p.expect(Token::Arrow)?;
+    expect_or_bail!(p, Token::Arrow);
     let body = recover!(p, expr(p, Lvl::Term, &[]));
     Ok(Fun(parameters, body.into()))
 }
@@ -249,7 +249,7 @@ fn fun_expr(p: &mut Parser) -> miette::Result<Term> {
 fn parameters(p: &mut Parser, stop_by: Token) -> miette::Result<Vec<Term>> {
     let mut parameters = vec![];
     loop {
-        if p.check(stop_by)? {
+        if p.check(stop_by) {
             p.bump();
             break;
         }
@@ -278,19 +278,19 @@ fn app(p: &mut Parser, level: Lvl, stop_by: &[Token]) -> miette::Result<Term> {
 
 fn identifier(p: &mut Parser) -> miette::Result<Identifier> {
     match () {
-        _ if p.check(Token::LParen)? => {
-            p.expect(Token::LParen)?;
+        _ if p.check(Token::LParen) => {
+            p.eat(Token::LParen)?;
             let op = if p.at_any(INFIX_OPERATORS) {
                 let (_, text, loc) = p.next()?;
                 crate::loc::Identifier { loc, text: text.into() }
             } else {
                 p.unexpected_token(INFIX_OPERATORS)?
             };
-            p.expect(Token::RParen)?;
+            p.eat(Token::RParen)?;
             Ok(op)
         }
-        _ if p.check(Token::Ident)? => {
-            let (text, loc) = p.expect(Token::Ident)?;
+        _ if p.check(Token::Ident) => {
+            let (text, loc) = p.eat(Token::Ident)?;
             Ok(crate::loc::Identifier { text: text.into(), loc })
         }
         _ => p.unexpected_token(&[Token::Ident, Token::LParen]),
@@ -299,40 +299,40 @@ fn identifier(p: &mut Parser) -> miette::Result<Identifier> {
 
 fn primary(p: &mut Parser, level: Lvl) -> miette::Result<Term> {
     match () {
-        _ if p.check(Token::Int)? => {
-            let (text, _) = p.expect(Token::Int)?;
+        _ if p.check(Token::Int) => {
+            let (text, _) = p.eat(Token::Int)?;
             Ok(Int(text.parse().unwrap()))
         }
-        _ if p.check(Token::Ident)? => {
-            let (text, loc) = p.expect(Token::Ident)?;
+        _ if p.check(Token::Ident) => {
+            let (text, loc) = p.eat(Token::Ident)?;
             Ok(Var(crate::loc::Identifier { text: text.into(), loc }))
         }
-        _ if p.check(Token::Meta)? => {
-            let (text, loc) = p.expect(Token::Meta)?;
+        _ if p.check(Token::Meta) => {
+            let (text, loc) = p.eat(Token::Meta)?;
             Ok(Meta(crate::loc::Identifier { text: text[1..text.len()].into(),
                                              loc }))
         }
-        _ if p.check(Token::Text)? => {
-            let (text, loc) = p.expect(Token::Text)?;
+        _ if p.check(Token::Text) => {
+            let (text, loc) = p.eat(Token::Text)?;
             Ok(Text(crate::loc::Text { value: text[1..text.len() - 1].into(),
                                        loc }))
         }
-        _ if p.check(Token::LParen)? => group_by(p, level, Token::LParen, Token::RParen, Parens),
-        _ if p.check(Token::LBracket)? => group_by(p, level, Token::LBracket, Token::RBracket, Brackets),
+        _ if p.check(Token::LParen) => group_by(p, level, Token::LParen, Token::RParen, Parens),
+        _ if p.check(Token::LBracket) => group_by(p, level, Token::LBracket, Token::RBracket, Brackets),
         _ => Ok(recover!(p, p.unexpected_token(EXPR_FIRST))),
     }
 }
 
 fn group_by<F>(p: &mut Parser, l: Lvl, initial: Token, end: Token, f: F) -> miette::Result<Term>
     where F: FnOnce(Box<Term>) -> Term {
-    if p.check(initial)? {
-        p.expect(initial).unwrap();
+    if p.check(initial) {
+        expect_or_bail!(p, initial);
         let mut term = recover!(p, expr(p, l, &[Token::Comma]));
-        while p.check(Token::Comma)? {
+        while p.check(Token::Comma) {
             let rhs = recover!(p, expr(p, l, &[Token::Comma, end]));
             term = BinOp(term.into(), BinOp::Comma, rhs.into());
         }
-        p.eat(end)?;
+        expect_or_bail!(p, end);
         Ok(f(term.into()))
     } else {
         Ok(recover!(p, p.unexpected_token(EXPR_FIRST)))
@@ -349,7 +349,8 @@ mod tests {
                              curr: None,
                              text: text.into(),
                              errors: vec![],
-                             terms: vec![] };
+                             terms: vec![],
+                             gas: Cell::new(0) };
         p.next()?;
         f(&mut p)
     }

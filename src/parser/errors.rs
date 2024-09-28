@@ -5,7 +5,7 @@ use super::*;
 pub struct Eof;
 
 #[derive(Debug, thiserror::Error, miette::Diagnostic)]
-#[error("unexpected token: {actual}, possibilities: {}", possibilities.into_iter().map(|t| format!("{t}")).collect::<Vec<_>>().join(", "))]
+#[error("unexpected token: {actual}, possibilities: {}", possibilities.iter().map(|t| format!("{t}")).collect::<Vec<_>>().join(", "))]
 pub struct UnexpectedToken {
     pub actual: Token,
     pub possibilities: Vec<Token>,
@@ -25,6 +25,9 @@ pub struct ExpectedToken {
 
     #[label]
     pub span: crate::loc::Loc,
+
+    #[source_code]
+    pub code: NamedSource<String>,
 }
 
 macro_rules! recover {
@@ -43,4 +46,14 @@ macro_rules! recover {
     };
 }
 
+macro_rules! expect_or_bail {
+    ($p:expr, $token:expr) => {
+        if let None = $p.expect($token) {
+            $p.bump();
+            return Ok(Term::Error);
+        }
+    };
+}
+
+pub(crate) use expect_or_bail;
 pub(crate) use recover;

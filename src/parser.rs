@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{cell::Cell, path::PathBuf};
 
 use crate::{concrete::{File, Term},
             lexer::Token,
@@ -9,7 +9,7 @@ pub mod grammar;
 
 use errors::*;
 use logos::Logos;
-use miette::NamedSource;
+use miette::{IntoDiagnostic, NamedSource};
 
 pub struct Parser<'a> {
     file: PathBuf,
@@ -18,6 +18,8 @@ pub struct Parser<'a> {
     terms: Vec<Term>,
     text: String,
     errors: Vec<miette::Report>,
+    #[cfg(debug_assertions)]
+    gas: Cell<usize>,
 }
 
 impl<'a> Parser<'a> {
@@ -27,11 +29,12 @@ impl<'a> Parser<'a> {
                              curr: None,
                              errors: vec![],
                              text: text.into(),
-                             terms: vec![] };
+                             terms: vec![],
+                             gas: Cell::new(0) };
 
         p.bump();
-        while !p.eof()? {
-            let decl = grammar::decl(&mut p)?;
+        while !p.eof() {
+            let decl = recover!(&mut p, grammar::decl(&mut p));
             p.terms.push(decl);
         }
 
@@ -45,29 +48,15 @@ impl<'a> Parser<'a> {
         self.errors.push(error.with_source_code(source));
     }
 
-    pub fn expect(&mut self, token: Token) -> miette::Result<(&str, crate::loc::Loc)> {
-        let range = self.lexer.span();
-        let text = self.lexer.slice();
-        let span = Loc::Loc { startpos: range.start,
-                              endpos: range.end,
-                              path: self.file.clone() };
-        if Some(token) == self.curr {
-            self.bump();
-            Ok((text, span))
-        } else {
-            Err(ExpectedToken { token,
-                                span,
-                                actual: self.curr.unwrap_or(Token::Skip) })?
+    pub fn expect(&mut self, token: Token) -> Option<(String, crate::loc::Loc)> {
+        let tok = { self.eat(token).map(|(text, loc)| (text.to_string(), loc)) };
+        match tok {
+            Ok(value) => Some(value),
+            Err(err) => {
+                self.report(err);
+                None
+            }
         }
-    }
-
-    pub fn peek(&self) -> (&str, crate::loc::Loc) {
-        let text = self.lexer.slice();
-        let range = self.lexer.span();
-        (text,
-         Loc::Loc { startpos: range.start,
-                    endpos: range.end,
-                    path: self.file.clone() })
     }
 
     pub fn at_any(&self, tokens: &[Token]) -> bool {
@@ -77,18 +66,21 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn eat(&mut self, token: Token) -> miette::Result<()> {
+    pub fn eat(&mut self, token: Token) -> miette::Result<(&str, crate::loc::Loc)> {
         let range = self.lexer.span();
+        let text = self.lexer.slice();
+        let code = NamedSource::new(self.file.to_str().unwrap_or(""), self.text.clone());
         let span = Loc::Loc { startpos: range.start,
                               endpos: range.end,
                               path: self.file.clone() };
         if Some(token) == self.curr {
             self.bump();
-            Ok(())
+            Ok((text, span))
         } else {
             Err(ExpectedToken { token,
                                 span,
-                                actual: self.curr.unwrap_or(Token::Skip) })?
+                                actual: self.curr.unwrap_or(Token::Skip),
+                                code })?
         }
     }
 
@@ -104,12 +96,12 @@ impl<'a> Parser<'a> {
                               code })?
     }
 
-    pub fn check(&mut self, token: Token) -> miette::Result<bool> {
-        Ok(Some(token) == self.curr)
+    pub fn check(&mut self, token: Token) -> bool {
+        Some(token) == self.curr
     }
 
-    pub fn eof(&mut self) -> miette::Result<bool> {
-        Ok(self.curr.is_none())
+    pub fn eof(&mut self) -> bool {
+        self.curr.is_none()
     }
 
     #[allow(clippy::should_implement_trait)]
@@ -128,6 +120,11 @@ impl<'a> Parser<'a> {
     }
 
     pub fn bump(&mut self) {
+        #[cfg(debug_assertions)]
+        if self.gas.get() == 20000 {
+            panic!("gas exhausted")
+        }
+
         match self.lexer.next() {
             Some(Ok(value)) => {
                 self.curr = Some(value);
