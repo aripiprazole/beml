@@ -15,6 +15,7 @@ pub struct Parser<'a> {
     lexer: logos::Lexer<'a, crate::lexer::Token>,
     curr: Option<Token>,
     terms: Vec<Term>,
+    errors: Vec<miette::Report>,
 }
 
 impl<'a> Parser<'a> {
@@ -22,6 +23,7 @@ impl<'a> Parser<'a> {
         let mut p = Parser { file,
                              lexer: Token::lexer(text),
                              curr: None,
+                             errors: vec![],
                              terms: vec![] };
 
         p.bump();
@@ -35,6 +37,10 @@ impl<'a> Parser<'a> {
                   shebang: None })
     }
 
+    pub fn report(&mut self, error: miette::Report) {
+        self.errors.push(error);
+    }
+
     pub fn expect(&mut self, token: Token) -> miette::Result<(&str, crate::loc::Loc)> {
         if Some(token) == self.curr {
             let text = self.lexer.slice();
@@ -45,7 +51,7 @@ impl<'a> Parser<'a> {
                            endpos: range.end,
                            path: self.file.clone() }))
         } else {
-            Err(UnexpectedToken)?
+            Err(ExpectedToken(token))?
         }
     }
 

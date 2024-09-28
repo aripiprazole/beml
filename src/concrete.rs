@@ -99,6 +99,7 @@ pub enum Term {
     Let(Let),
     Int(i64),
     Text(crate::loc::Text),
+    Error,
 }
 
 #[derive(Debug)]
