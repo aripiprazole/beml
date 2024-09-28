@@ -2,6 +2,8 @@
 #![feature(new_range_api)]
 
 pub mod loc {
+    use miette::{SourceOffset, SourceSpan};
+
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
     pub enum Loc {
         #[default]
@@ -11,6 +13,18 @@ pub mod loc {
             endpos: usize,
             path: std::path::PathBuf,
         },
+    }
+
+    impl From<Loc> for SourceSpan {
+        fn from(value: Loc) -> Self {
+            match value {
+                Loc::Nowhere => Self::new(SourceOffset::from(0), 0),
+                Loc::Loc { startpos, endpos, .. } => {
+                    let length = endpos - startpos;
+                    Self::new(SourceOffset::from(startpos), length)
+                }
+            }
+        }
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash)]

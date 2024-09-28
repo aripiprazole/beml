@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use logos::Logos;
 
 #[derive(Logos, Debug, PartialEq, Clone, Copy)]
@@ -80,6 +82,51 @@ pub enum Token {
     #[regex("//.*", logos::skip)]
     #[token("(*", lex_block_comment)]
     Skip,
+}
+
+impl Display for Token {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", match self {
+            Token::Ident => "<identifier>",
+            Token::Meta => "<meta>",
+            Token::Int => "<int>",
+            Token::Text => "<string>",
+            Token::Of => "of",
+            Token::Let => "let",
+            Token::Val => "val",
+            Token::Type => "type",
+            Token::In => "in",
+            Token::If => "if",
+            Token::Then => "then",
+            Token::Else => "else",
+            Token::Match => "match",
+            Token::Function => "function",
+            Token::With => "with",
+            Token::Fun => "fun",
+            Token::Bar => "|",
+            Token::Equals => "=",
+            Token::NotEquals => "!=",
+            Token::Gt => "<",
+            Token::Gte => "<=",
+            Token::Lt => ">",
+            Token::Lte => ">=",
+            Token::DoubleArrow => "=>",
+            Token::Arrow => "->",
+            Token::Colon => ":",
+            Token::Comma => ",",
+            Token::Star => "*",
+            Token::Div => "/",
+            Token::Sum => "+",
+            Token::Sub => "-",
+            Token::LParen => "(",
+            Token::RParen => ")",
+            Token::LBracket => "[",
+            Token::RBracket => "]",
+            Token::LBrace => "{",
+            Token::RBrace => "}",
+            Token::Skip => "<skip>",
+        })
+    }
 }
 
 #[derive(Logos)]

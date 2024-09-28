@@ -1,6 +1,16 @@
 use super::*;
 use crate::{concrete::*, loc::Identifier};
 
+const EXPR_FIRST: &[Token] = &[Token::Let,
+                               Token::Match,
+                               Token::Function,
+                               Token::If,
+                               Token::Int,
+                               Token::Ident,
+                               Token::Text,
+                               Token::LParen,
+                               Token::LBracket];
+
 const DECL_FIRST: &[Token] = &[Token::Let, Token::Type, Token::Val];
 
 const INFIX_OPERATORS: &[Token] = &[Token::Gt,
@@ -30,7 +40,7 @@ pub fn decl(p: &mut Parser) -> miette::Result<Term> {
         _ if p.check(Token::Let)? => let_decl(p),
         _ if p.check(Token::Val)? => val_decl(p),
         _ if p.check(Token::Type)? => type_decl(p),
-        _ => Err(UnexpectedToken)?,
+        _ => Ok(recover!(p, p.unexpected_token(DECL_FIRST))),
     }
 }
 
@@ -274,7 +284,7 @@ fn identifier(p: &mut Parser) -> miette::Result<Identifier> {
                 let (_, text, loc) = p.next()?;
                 crate::loc::Identifier { loc, text: text.into() }
             } else {
-                Err(UnexpectedToken)?
+                p.unexpected_token(INFIX_OPERATORS)?
             };
             p.expect(Token::RParen)?;
             Ok(op)
@@ -283,7 +293,7 @@ fn identifier(p: &mut Parser) -> miette::Result<Identifier> {
             let (text, loc) = p.expect(Token::Ident)?;
             Ok(crate::loc::Identifier { text: text.into(), loc })
         }
-        _ => Err(UnexpectedToken)?,
+        _ => p.unexpected_token(&[Token::Ident, Token::LParen]),
     }
 }
 
@@ -309,7 +319,7 @@ fn primary(p: &mut Parser, level: Lvl) -> miette::Result<Term> {
         }
         _ if p.check(Token::LParen)? => group_by(p, level, Token::LParen, Token::RParen, Parens),
         _ if p.check(Token::LBracket)? => group_by(p, level, Token::LBracket, Token::RBracket, Brackets),
-        _ => Err(UnexpectedToken)?,
+        _ => Ok(recover!(p, p.unexpected_token(EXPR_FIRST))),
     }
 }
 
@@ -325,7 +335,7 @@ fn group_by<F>(p: &mut Parser, l: Lvl, initial: Token, end: Token, f: F) -> miet
         p.eat(end)?;
         Ok(f(term.into()))
     } else {
-        Err(UnexpectedToken)?
+        Ok(recover!(p, p.unexpected_token(EXPR_FIRST)))
     }
 }
 
@@ -337,6 +347,7 @@ mod tests {
         let mut p = Parser { file: PathBuf::new(),
                              lexer: Token::lexer(text),
                              curr: None,
+                             text: text.into(),
                              errors: vec![],
                              terms: vec![] };
         p.next()?;

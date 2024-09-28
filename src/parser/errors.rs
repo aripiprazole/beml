@@ -5,12 +5,27 @@ use super::*;
 pub struct Eof;
 
 #[derive(Debug, thiserror::Error, miette::Diagnostic)]
-#[error("unexpected token")]
-pub struct UnexpectedToken;
+#[error("unexpected token: {actual}, possibilities: {}", possibilities.into_iter().map(|t| format!("{t}")).collect::<Vec<_>>().join(", "))]
+pub struct UnexpectedToken {
+    pub actual: Token,
+    pub possibilities: Vec<Token>,
+
+    #[label]
+    pub span: crate::loc::Loc,
+
+    #[source_code]
+    pub code: NamedSource<String>,
+}
 
 #[derive(Debug, thiserror::Error, miette::Diagnostic)]
-#[error("unexpected token")]
-pub struct ExpectedToken(pub Token);
+#[error("unexpected token: {actual}, expected: {token}")]
+pub struct ExpectedToken {
+    pub token: Token,
+    pub actual: Token,
+
+    #[label]
+    pub span: crate::loc::Loc,
+}
 
 macro_rules! recover {
     ($p:expr, $expr:expr) => {

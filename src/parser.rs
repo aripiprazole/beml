@@ -9,12 +9,14 @@ pub mod grammar;
 
 use errors::*;
 use logos::Logos;
+use miette::NamedSource;
 
 pub struct Parser<'a> {
     file: PathBuf,
     lexer: logos::Lexer<'a, crate::lexer::Token>,
     curr: Option<Token>,
     terms: Vec<Term>,
+    text: String,
     errors: Vec<miette::Report>,
 }
 
@@ -24,6 +26,7 @@ impl<'a> Parser<'a> {
                              lexer: Token::lexer(text),
                              curr: None,
                              errors: vec![],
+                             text: text.into(),
                              terms: vec![] };
 
         p.bump();
@@ -38,20 +41,23 @@ impl<'a> Parser<'a> {
     }
 
     pub fn report(&mut self, error: miette::Report) {
-        self.errors.push(error);
+        let source = NamedSource::new(self.file.to_str().unwrap_or(""), self.text.clone());
+        self.errors.push(error.with_source_code(source));
     }
 
     pub fn expect(&mut self, token: Token) -> miette::Result<(&str, crate::loc::Loc)> {
+        let range = self.lexer.span();
+        let text = self.lexer.slice();
+        let span = Loc::Loc { startpos: range.start,
+                              endpos: range.end,
+                              path: self.file.clone() };
         if Some(token) == self.curr {
-            let text = self.lexer.slice();
-            let range = self.lexer.span();
             self.bump();
-            Ok((text,
-                Loc::Loc { startpos: range.start,
-                           endpos: range.end,
-                           path: self.file.clone() }))
+            Ok((text, span))
         } else {
-            Err(ExpectedToken(token))?
+            Err(ExpectedToken { token,
+                                span,
+                                actual: self.curr.unwrap_or(Token::Skip) })?
         }
     }
 
@@ -72,12 +78,30 @@ impl<'a> Parser<'a> {
     }
 
     pub fn eat(&mut self, token: Token) -> miette::Result<()> {
+        let range = self.lexer.span();
+        let span = Loc::Loc { startpos: range.start,
+                              endpos: range.end,
+                              path: self.file.clone() };
         if Some(token) == self.curr {
             self.bump();
             Ok(())
         } else {
-            Err(UnexpectedToken)?
+            Err(ExpectedToken { token,
+                                span,
+                                actual: self.curr.unwrap_or(Token::Skip) })?
         }
+    }
+
+    pub fn unexpected_token<T>(&self, possibilities: &[Token]) -> miette::Result<T> {
+        let range = self.lexer.span();
+        let code = NamedSource::new(self.file.to_str().unwrap_or(""), self.text.clone());
+        let span = Loc::Loc { startpos: range.start,
+                              endpos: range.end,
+                              path: self.file.clone() };
+        Err(UnexpectedToken { actual: self.curr.unwrap_or(Token::Skip),
+                              possibilities: possibilities.to_vec(),
+                              span,
+                              code })?
     }
 
     pub fn check(&mut self, token: Token) -> miette::Result<bool> {
