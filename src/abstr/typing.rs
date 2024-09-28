@@ -12,14 +12,15 @@ use super::*;
 #[derive(Debug, Clone)]
 struct Constructor {
     name: Arc<Definition>,
-    type_repr: Option<Type>,
+    type_repr: Option<hir::Type>,
 }
 
 #[derive(Clone)]
 pub struct TypeEnv {
     src_pos: Loc,
     types: im_rc::HashMap<String, Arc<Definition>>,
-    constructors: im_rc::HashMap<String, Constructor>,
+    types_to_constructors: im_rc::HashMap<String, im_rc::HashMap<String, Constructor>>,
+    constructors_to_types: im_rc::HashMap<String, hir::Type>,
     assumptions: im_rc::HashMap<String, hir::Poly>,
     errors: Rc<RefCell<Vec<miette::Report>>>,
     counter: Rc<Cell<usize>>,
@@ -66,7 +67,18 @@ pub fn infer(env: &TypeEnv, term: Term) -> hir::Term {
                 value: hir::TermKind::Fun(parameter, body.into()),
             }
         }
-        Match(_, _) => todo!(),
+        Match(box scrutinee, cases) => {
+            let scrutinee = infer(env, scrutinee);
+            let h = env.fresh_type_variable();
+            for Case { pattern, body } in cases {
+                let mut ctx = HashMap::new();
+                let mut local_env = env.clone();
+                pat::check_pat(&mut local_env, &mut ctx, pattern, scrutinee.type_repr.clone());
+                let body = infer(&local_env, body);
+                env.unify_catch(h.clone(), body.type_repr.clone());
+            }
+            todo!()
+        }
         Ascription(box term, type_repr) => check(env, term, hir::Type::from(type_repr)),
         App(box callee, box argument) => {
             let h = env.fresh_type_variable();
@@ -127,6 +139,91 @@ pub fn infer(env: &TypeEnv, term: Term) -> hir::Term {
     }
 }
 
+mod pat {
+    use hir::{IncompatiblePatternTypeError, UnresolvedConstructorError};
+
+    use super::*;
+
+    pub type Pats<'a> = &'a mut HashMap<String, hir::Type>;
+
+    pub fn infer_pat(env: &mut TypeEnv, ctx: Pats, pat: Pattern) -> hir::Type {
+        match pat {
+            PatternSrcPos(box pat, src_pos) => {
+                env.src_pos = src_pos;
+                infer_pat(env, ctx, pat)
+            }
+            Variable(var) => ctx
+                .entry(var.name.text.clone())
+                .or_insert_with(|| env.fresh_type_variable())
+                .clone(),
+            Constructor(ref constructor, _) => {
+                let Some(hir_type) = env.constructors_to_types.get(&constructor.name.text).cloned() else {
+                    env.report(IncompatiblePatternTypeError);
+                    return hir::Type::Any;
+                };
+                check_pat(env, ctx, pat, hir_type)
+            }
+            Elements(elements) => hir::Type::Pair(
+                elements
+                    .into_iter()
+                    .map(|element| infer_pat(env, ctx, element))
+                    .collect(),
+            ),
+        }
+    }
+
+    pub fn check_pat(env: &mut TypeEnv, ctx: Pats, pat: Pattern, expected: hir::Type) -> hir::Type {
+        match (pat, expected) {
+            (PatternSrcPos(box pat, src_pos), expected) => {
+                env.src_pos = src_pos;
+                check_pat(env, ctx, pat, expected)
+            }
+            (Constructor(constructor, None), hir::Type::Constructor(type_repr)) => {
+                let Some(constructors) = env.types_to_constructors.get(&type_repr.name.text) else {
+                    env.report(IncompatiblePatternTypeError);
+                    return hir::Type::Constructor(type_repr);
+                };
+                let Some(Constructor { type_repr: None, .. }) = constructors.get(&constructor.name.text) else {
+                    env.report(UnresolvedConstructorError);
+                    return hir::Type::Constructor(type_repr);
+                };
+
+                hir::Type::Constructor(type_repr)
+            }
+            (Constructor(constructor, Some(box pat)), hir::Type::Constructor(type_repr)) => {
+                let Some(constructors) = env.types_to_constructors.get(&type_repr.name.text) else {
+                    env.report(IncompatiblePatternTypeError);
+                    return hir::Type::Constructor(type_repr);
+                };
+                let Some(Constructor {
+                    type_repr: Some(expected),
+                    ..
+                }) = constructors.get(&constructor.name.text)
+                else {
+                    env.report(UnresolvedConstructorError);
+                    return hir::Type::Constructor(type_repr);
+                };
+
+                hir::Type::App(type_repr, check_pat(env, ctx, pat, expected.clone()).into())
+            }
+            (Elements(elements), hir::Type::Pair(element_types)) => {
+                let elements = elements
+                    .into_iter()
+                    .zip(element_types)
+                    .map(|(element, element_type)| check_pat(env, ctx, element, element_type))
+                    .collect::<Vec<_>>();
+
+                hir::Type::Pair(elements)
+            }
+            (term, expected) => {
+                let inferred = infer_pat(env, ctx, term);
+                env.unify_catch(expected.clone(), inferred.clone());
+                expected
+            }
+        }
+    }
+}
+
 pub fn check(env: &TypeEnv, term: Term, expected: hir::Type) -> hir::Term {
     match (term, expected) {
         (Term::SrcPos(box term, src_pos), expected) => check(&TypeEnv { src_pos, ..env.clone() }, term, expected),
@@ -163,13 +260,17 @@ impl TypeEnv {
         new_type_env
     }
 
-    pub fn report(&self, error: miette::Report) {
+    pub fn report_direct_error(&self, error: miette::Report) {
         self.errors.borrow_mut().push(error);
+    }
+
+    pub fn report(&self, error: impl miette::Diagnostic + Send + Sync + 'static) {
+        self.report_direct_error(Err::<(), _>(error).into_diagnostic().unwrap_err());
     }
 
     pub fn unify_catch(&self, lhs: hir::Type, rhs: hir::Type) {
         if let Err(err) = lhs.unify(rhs).into_diagnostic() {
-            self.report(err);
+            self.report_direct_error(err);
         }
     }
 }

@@ -1,7 +1,6 @@
 use std::{
     collections::HashMap,
     hash::Hash,
-    rc::Rc,
     sync::{Arc, RwLock},
 };
 
@@ -9,6 +8,18 @@ use crate::{
     abstr::{Definition, Reference},
     loc::Loc,
 };
+
+#[derive(Debug, thiserror::Error, miette::Diagnostic)]
+#[error("incompatible pattern type")]
+pub struct IncompatiblePatternTypeError;
+
+#[derive(Debug, thiserror::Error, miette::Diagnostic)]
+#[error("unresolved constructor")]
+pub struct UnresolvedConstructorError;
+
+#[derive(Debug, thiserror::Error, miette::Diagnostic)]
+#[error("application pattern in constructor")]
+pub struct ApplicationPatternInConstructorError;
 
 #[derive(Debug, thiserror::Error, miette::Diagnostic)]
 #[error("unification error")]
@@ -87,6 +98,7 @@ impl Hash for Variable {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Type {
+    Any,
     Pair(Vec<Type>),           // 'a * 'b
     Tuple(Vec<Type>),          // ('a, 'b)
     Fun(Box<Type>, Box<Type>), // 'a -> 'b
