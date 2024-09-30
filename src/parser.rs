@@ -2,7 +2,7 @@ use std::{cell::Cell, path::PathBuf};
 
 use crate::{
     concr::{File, Term},
-    errors::{CompilerPass, JoinErrors},
+    errors::{CompilerPass, StepFailedError},
     lexer::Token,
     loc::Loc,
 };
@@ -60,7 +60,7 @@ impl<'a> Parser<'a> {
                 text: text.into(),
             })
         } else {
-            Err(JoinErrors {
+            Err(StepFailedError {
                 compiler_pass: CompilerPass::Parsing,
                 errors: p.errors,
             })?

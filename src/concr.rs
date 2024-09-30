@@ -1,7 +1,7 @@
 use super::*;
 
 use crate::{
-    errors::{CompilerPass, JoinErrors},
+    errors::{CompilerPass, StepFailedError},
     loc::Identifier,
 };
 
@@ -137,8 +137,11 @@ pub fn lower_file(file: File) -> miette::Result<abstr::File> {
             declarations,
         })
     } else {
-        Err(JoinErrors {
+        Err(StepFailedError {
             compiler_pass: CompilerPass::Lowering,
+
+            // this is safe, because we never use the `ctx.errors` after the call to `lower_file`
+            // and we never use the `ctx` after the call to `lower_file`
             errors: unsafe { std::mem::transmute_copy(&ctx.errors.borrow()) },
         })?
     }

@@ -21,7 +21,7 @@ impl From<Loc> for SourceSpan {
         match value {
             Loc::Nowhere => Self::new(SourceOffset::from(0), 0.into()),
             Loc::Loc { startpos, endpos, .. } => {
-                let length = endpos - 1 - startpos;
+                let length = endpos - startpos;
                 Self::new(SourceOffset::from(startpos), length.into())
             }
         }

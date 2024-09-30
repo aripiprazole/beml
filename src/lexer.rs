@@ -79,6 +79,8 @@ pub enum Token {
     LBrace,
     #[token("}")]
     RBrace,
+    #[token(r"[+-*/><=,!:]+")]
+    Infix,
     #[regex("//.*", logos::skip)]
     #[token("(*", lex_block_comment)]
     Skip,
@@ -125,6 +127,7 @@ impl Display for Token {
             Token::LBrace => "{",
             Token::RBrace => "}",
             Token::Skip => "<skip>",
+            Token::Infix => "<infix>",
         })
     }
 }

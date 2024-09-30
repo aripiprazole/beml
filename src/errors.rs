@@ -1,6 +1,8 @@
+/// Error that can occur during the compilation process. It composes all errors of that
+/// compilation process.
 #[derive(Debug, miette::Diagnostic, thiserror::Error)]
 #[error("{compiler_pass}: compiler error")]
-pub struct JoinErrors {
+pub struct StepFailedError {
     pub compiler_pass: CompilerPass,
 
     #[related]

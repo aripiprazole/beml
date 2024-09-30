@@ -29,6 +29,7 @@ const INFIX_OPERATORS: &[Token] = &[
     Token::Sub,
     Token::Star,
     Token::Div,
+    Token::Infix,
 ];
 
 const PRIMARY_FIRST: &[Token] = &[Token::Int, Token::Ident, Token::Text, Token::LParen, Token::LBracket];
@@ -130,10 +131,11 @@ fn ascription(p: &mut Parser, level: Lvl, stop_by: &[Token]) -> miette::Result<T
 
 fn bin_op(p: &mut Parser, level: Lvl, stop_by: &[Token]) -> miette::Result<Term> {
     let mut lhs = recover!(p, equality(p, level, stop_by));
-    while p.at_any(&[Token::DoubleArrow, Token::Arrow]) {
+    while p.at_any(&[Token::DoubleArrow, Token::Arrow, Token::Comma]) {
         let op = match p.curr {
             Some(Token::Arrow) => BinOp::Arrow,
             Some(Token::DoubleArrow) => BinOp::DoubleArrow,
+            Some(Token::Comma) => BinOp::Comma,
             t => panic!("unexpected: {t:?}"),
         };
         p.bump();
@@ -321,6 +323,7 @@ fn identifier(p: &mut Parser) -> miette::Result<Identifier> {
             } else {
                 p.unexpected_token(INFIX_OPERATORS)?
             };
+            p.bump();
             p.eat(Token::RParen)?;
             Ok(op)
         }
@@ -367,11 +370,7 @@ where
     F: FnOnce(Box<Term>) -> Term, {
     if p.check(initial) {
         p.eat(initial)?;
-        let mut term = recover!(p, expr(p, l, &[Token::Comma]));
-        while p.check(Token::Comma) {
-            let rhs = recover!(p, expr(p, l, &[Token::Comma, end]));
-            term = BinOp(term.into(), BinOp::Comma, rhs.into());
-        }
+        let term = recover!(p, expr(p, l, &[end]));
         expect_or_bail!(p, end);
         Ok(f(term.into()))
     } else {
