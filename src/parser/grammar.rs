@@ -314,8 +314,10 @@ fn identifier(p: &mut Parser) -> miette::Result<Identifier> {
         _ if p.check(Token::LParen) => {
             p.eat(Token::LParen)?;
             let op = if p.at_any(INFIX_OPERATORS) {
-                let (_, text, loc) = p.next()?;
-                crate::loc::Identifier { loc, text: text.into() }
+                crate::loc::Identifier {
+                    loc: p.loc(),
+                    text: p.text().into(),
+                }
             } else {
                 p.unexpected_token(INFIX_OPERATORS)?
             };
