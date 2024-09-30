@@ -12,6 +12,18 @@ impl LoweringCtx {
             Int(value) => Ok(abstr::Int(value)),                             // 10
             Var(name) => Ok(abstr::Var(self.lookup(name)?.use_reference())), // x
 
+            // fun x y z -> body
+            Fun(parameters, box body) => {
+                let mut ctx = self.clone();
+                Ok(parameters
+                    .into_iter()
+                    .rev()
+                    .map(|parameter| ctx.new_variable(parameter))
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .fold(ctx.do_lowering(body)?, |acc, parameter| abstr::Fun(parameter, acc.into())))
+            }
+
             // function
             // | Nil => 0
             // | Cons x xs => 1 + call xs
