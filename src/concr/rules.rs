@@ -11,8 +11,8 @@ pub fn lower_term(mut ctx: LoweringCtx, term: Term) -> miette::Result<abstr::Ter
             ctx.src_pos = loc.clone();
             Ok(abstr::SrcPos(lower_term(ctx, term)?.into(), loc))
         }
-        Int(value) => Ok(abstr::Int(value)),                            // 10
-        Var(name) => Ok(abstr::Var(ctx.lookup(name)?.use_reference())), // x
+        Int(value) => Ok(abstr::Int(value)),                               // 10
+        Var(name) => Ok(abstr::Var(ctx.use_reference(ctx.lookup(name)?))), // x
 
         // fun x y z -> body
         Fun(parameters, box body) => {
@@ -31,8 +31,8 @@ pub fn lower_term(mut ctx: LoweringCtx, term: Term) -> miette::Result<abstr::Ter
         // | Cons x xs => 1 + call xs
         Function(Function { cases }) => {
             let scrutinee = ctx.new_fresh_variable();
+            let var = abstr::Var(ctx.use_reference(scrutinee.clone()));
             let cases = pat::lower_cases(ctx, cases);
-            let var = abstr::Var(scrutinee.clone().use_reference());
             Ok(abstr::Fun(scrutinee, abstr::Match(var.into(), cases).into()))
         }
 
@@ -55,12 +55,10 @@ pub fn lower_term(mut ctx: LoweringCtx, term: Term) -> miette::Result<abstr::Ter
         // 0 + 10
         BinOp(box lhs, BinOp::UserDefined(name), box rhs) => {
             let name = ctx.lookup(name)?;
+            let name = ctx.use_reference(name);
             let lhs = lower_term(ctx.clone(), lhs)?;
             let rhs = lower_term(ctx, rhs)?;
-            Ok(abstr::App(
-                abstr::App(abstr::Var(name.use_reference()).into(), lhs.into()).into(),
-                rhs.into(),
-            ))
+            Ok(abstr::App(abstr::App(abstr::Var(name).into(), lhs.into()).into(), rhs.into()))
         }
 
         // let x y = 1 in x 10
@@ -86,7 +84,7 @@ pub fn lower_term(mut ctx: LoweringCtx, term: Term) -> miette::Result<abstr::Ter
             for pattern in patterns.into_iter() {
                 let name = ctx.new_fresh_variable();
                 let default_case = abstr::Case { pattern, body };
-                let new_body = abstr::Match(abstr::Var(name.clone().use_reference()).into(), vec![default_case]);
+                let new_body = abstr::Match(abstr::Var(ctx.use_reference(name.clone())).into(), vec![default_case]);
                 body = abstr::Fun(name, new_body.into());
             }
 
@@ -198,7 +196,7 @@ pub fn lower_type(mut ctx: LoweringCtx, term: Term) -> miette::Result<abstr::Typ
             .expect("this should never fail because we have at least two elements.")),
         Var(name) => ctx
             .lookup_type(name)
-            .map(|definition| abstr::Type::Constructor(definition.use_reference()))
+            .map(|definition| abstr::Type::Constructor(ctx.use_reference(definition)))
             .into_diagnostic(),
         _ => ctx.wrap_error(TypeSyntaxError),
     }
@@ -235,7 +233,7 @@ pub mod pat {
             }
             Var(name) if name.text.chars().next().unwrap().is_uppercase() => {
                 Ok(match ctx.lookup_constructor(name.clone()) {
-                    Ok(def) => abstr::Constructor(def.use_reference(), None),
+                    Ok(def) => abstr::Constructor(ctx.use_reference(def), None),
                     Err(error) => {
                         let definition = ctx.new_variable(name.clone());
                         ctx.report_error(UncapitalizeVariableError {
@@ -358,7 +356,7 @@ pub mod decl {
                         let name = ctx.new_fresh_variable();
                         let default_case = abstr::Case { pattern, body };
                         let new_body =
-                            abstr::Match(abstr::Var(name.clone().use_reference()).into(), vec![default_case]);
+                            abstr::Match(abstr::Var(ctx.use_reference(name.clone())).into(), vec![default_case]);
                         body = abstr::Fun(name, new_body.into());
                     }
 
@@ -370,12 +368,13 @@ pub mod decl {
                             loc: src_pos,
                         }))
                     } else {
+                        let new_var = ctx.new_fresh_variable();
                         Ok(abstr::Decl::LetDecl(abstr::LetDecl {
                             def: ctx.new_fresh_variable(),
                             type_repr: fun_type,
                             body: abstr::Value(abstr::Match(body.into(), vec![abstr::Case {
                                 pattern,
-                                body: abstr::Var(ctx.new_fresh_variable().use_reference()),
+                                body: abstr::Var(ctx.use_reference(new_var)),
                             }])),
                             loc: src_pos,
                         }))
