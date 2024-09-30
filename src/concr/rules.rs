@@ -246,11 +246,13 @@ pub mod pat {
             }
             Var(name) => Ok(abstr::Variable(ctx.new_variable(name))),
             App(box term, box arg) => {
-                let abstr::Constructor(name, parameters) = lower_pattern(ctx, term)
+                let term = lower_pattern(ctx, term)
                     .map_err(|error| PatternConstructorAppError { error })
-                    .into_diagnostic()?
-                else {
-                    return ctx.wrap_error(ExpectedConstructorError);
+                    .into_diagnostic()?;
+                let (name, parameters) = match term {
+                    abstr::PatternSrcPos(box abstr::Constructor(name, parameters), _)
+                    | abstr::Constructor(name, parameters) => (name, parameters),
+                    _ => return ctx.wrap_error(ExpectedConstructorError),
                 };
 
                 if parameters.is_some() {
