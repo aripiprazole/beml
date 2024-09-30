@@ -22,6 +22,7 @@ pub struct TypeEnv {
     constructors_to_types: im_rc::HashMap<String, hir::Type>,
     assumptions: im_rc::HashMap<String, hir::Scheme>,
     errors: Rc<RefCell<Vec<miette::Report>>>,
+    counter: Rc<Cell<usize>>,
 }
 
 /// Infers the type of a term. It returns a [crate::hir::Term] with the
@@ -88,7 +89,7 @@ pub fn infer(env: &TypeEnv, term: Term) -> hir::Term {
                 value: hir::TermKind::Match(pat::specialize(scrutinee, cases)),
             }
         }
-        Ascription(box term, type_repr) => check(env, term, hir::Type::from(type_repr)),
+        Ascription(box term, type_repr) => check(env, term, hir::Type::new(type_repr, env)),
         App(box callee, box argument) => {
             let h = env.fresh_type_variable();
             let callee = infer(env, callee);
@@ -458,7 +459,9 @@ mod pat {
 
 impl TypeEnv {
     pub fn fresh_type_variable(&self) -> hir::Type {
-        hir::Type::Hole(hir::Variable::default())
+        let idx = self.counter.get();
+        self.counter.set(idx + 1);
+        hir::Type::Hole(hir::Variable::new(self.counter.get()))
     }
 
     pub fn get_type(&self, name: &str) -> Reference {

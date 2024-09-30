@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::{
-    abstr::{Definition, Reference},
+    abstr::{typing::TypeEnv, Definition, Reference},
     loc::Loc,
 };
 
@@ -128,21 +128,25 @@ pub struct Scheme {
 /// A variable is a mutable reference to a type. It is used to represent
 /// a variable in the HIR.
 #[derive(Debug, Clone, Default)]
-pub struct Variable(Arc<RwLock<Option<Type>>>);
+pub struct Variable(usize, Arc<RwLock<Option<Type>>>);
 
 impl Variable {
+    pub fn new(idx: usize) -> Self {
+        Variable(idx, Arc::new(RwLock::new(None)))
+    }
+
     pub fn value(&self) -> Option<Type> {
-        self.0.read().unwrap().clone()
+        self.1.read().unwrap().clone()
     }
 
     pub fn update(&self, value: Type) {
-        *self.0.write().unwrap() = Some(value);
+        *self.1.write().unwrap() = Some(value);
     }
 }
 
 impl PartialEq for Variable {
     fn eq(&self, other: &Self) -> bool {
-        self.value() == other.value()
+        self.0 == other.0
     }
 }
 
@@ -150,7 +154,7 @@ impl Eq for Variable {}
 
 impl Hash for Variable {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.0.read().unwrap().hash(state);
+        self.0.hash(state);
     }
 }
 
@@ -206,31 +210,30 @@ impl Scheme {
     }
 }
 
-impl From<crate::abstr::Type> for Type {
-    fn from(abstr: crate::abstr::Type) -> Self {
-        fn go(vars: &mut HashMap<String, Type>, value: crate::abstr::Type) -> Type {
+impl Type {}
+
+impl Type {
+    pub fn new(abstr: crate::abstr::Type, env: &TypeEnv) -> Self {
+        fn go(vars: &mut HashMap<String, Type>, env: &TypeEnv, value: crate::abstr::Type) -> Type {
             use crate::abstr::Type::*;
             match value {
-                SrcPos(box term, _) => go(vars, term),
-                Pair(elements) => Type::Pair(elements.into_iter().map(|element| go(vars, element)).collect()),
-                Tuple(elements) => Type::Tuple(elements.into_iter().map(|element| go(vars, element)).collect()),
-                Fun(box domain, box codomain) => Type::Fun(go(vars, domain).into(), go(vars, codomain).into()),
-                App(name, box argument) => Type::App(name, go(vars, argument).into()),
-                Local(box local) => Type::Local(go(vars, local).into()),
-                Meta(id) => vars
-                    .entry(id.text)
-                    .or_insert_with(|| Type::Hole(Variable::default()))
-                    .clone(),
+                SrcPos(box term, _) => go(vars, env, term),
+                Pair(elements) => Type::Pair(elements.into_iter().map(|element| go(vars, env, element)).collect()),
+                Tuple(elements) => Type::Tuple(elements.into_iter().map(|element| go(vars, env, element)).collect()),
+                Fun(box domain, box codomain) => {
+                    Type::Fun(go(vars, env, domain).into(), go(vars, env, codomain).into())
+                }
+                App(name, box argument) => Type::App(name, go(vars, env, argument).into()),
+                Local(box local) => Type::Local(go(vars, env, local).into()),
+                Meta(id) => vars.entry(id.text).or_insert_with(|| env.fresh_type_variable()).clone(),
                 Constructor(constructor) => Type::Constructor(constructor),
-                Hole => Type::Hole(Variable::default()),
+                Hole => env.fresh_type_variable(),
             }
         }
 
-        go(&mut HashMap::new(), abstr)
+        go(&mut HashMap::new(), env, abstr)
     }
-}
 
-impl Type {
     #[allow(clippy::mutable_key_type)]
     pub fn generalize(self) -> Scheme {
         fn go(vars: &mut HashMap<Type, usize>, value: Type) -> Type {
@@ -243,10 +246,7 @@ impl Type {
                 Fun(box domain, box codomain) => Type::Fun(go(vars, domain).into(), go(vars, codomain).into()),
                 App(name, box argument) => Type::App(name, go(vars, argument).into()),
                 Local(box local) => Type::Local(go(vars, local).into()),
-                Hole(_) => {
-                    let idx = vars.len();
-                    Type::Meta(*vars.entry(value).or_insert_with(|| idx))
-                }
+                Hole(Variable(idx, _)) => Type::Meta(*vars.entry(value).or_insert_with(|| idx)),
                 Constructor(constructor) => Type::Constructor(constructor),
                 Meta(m) => Type::Meta(m),
             }
