@@ -142,7 +142,7 @@ pub fn lower_file(file: File) -> miette::Result<abstr::File> {
 
             // this is safe, because we never use the `ctx.errors` after the call to `lower_file`
             // and we never use the `ctx` after the call to `lower_file`
-            errors: unsafe { std::mem::transmute_copy(&ctx.errors.borrow()) },
+            errors: unsafe { std::mem::take(&mut *ctx.errors.as_ptr()) },
         })?
     }
 }
