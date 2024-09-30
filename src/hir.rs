@@ -5,6 +5,8 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+use fxhash::FxBuildHasher;
+
 use crate::{
     abstr::{typing::TypeEnv, Definition, Reference},
     loc::Loc,
@@ -161,7 +163,7 @@ pub struct Constructor {
 pub struct AlgebraicDataType {
     pub definition: Arc<Definition>,
     pub arity: usize,
-    pub constructors: im_rc::HashMap<String, Constructor>,
+    pub constructors: im_rc::HashMap<String, Constructor, FxBuildHasher>,
 }
 
 #[derive(Debug, Clone)]
@@ -174,13 +176,13 @@ pub struct Value {
 #[derive(Debug, Clone)]
 pub struct File {
     pub path: PathBuf,
-    pub algebraic_data_types: im::HashMap<String, AlgebraicDataType>,
-    pub definitions: im::HashMap<String, Term>,
+    pub algebraic_data_types: im::HashMap<String, AlgebraicDataType, FxBuildHasher>,
+    pub definitions: im::HashMap<String, Term, FxBuildHasher>,
 }
 
 /// A variable is a mutable reference to a type. It is used to represent
 /// a variable in the HIR.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct Variable(usize, Arc<RwLock<Option<Type>>>);
 
 impl Variable {
@@ -241,7 +243,7 @@ impl Scheme {
         Scheme { args: 0, mono: value }
     }
 
-    pub fn instantiate(&self) -> Type {
+    pub fn instantiate(&self, env: &TypeEnv) -> Type {
         fn go(holes: &HashMap<usize, Type>, tt: Type) -> Type {
             match tt {
                 Type::Any => Type::Any,
@@ -251,13 +253,16 @@ impl Scheme {
                 Type::App(n, box argument) => Type::App(n, go(holes, argument).into()),
                 Type::Local(box local) => Type::Local(go(holes, local).into()),
                 Type::Constructor(c) => Type::Constructor(c),
-                Type::Meta(idx) => holes.get(&idx).cloned().expect("can't index holes"),
+                Type::Meta(idx) => holes
+                    .get(&idx)
+                    .cloned()
+                    .unwrap_or_else(|| panic!("can't index hole {idx}")),
                 Type::Hole(h) => Type::Hole(h),
             }
         }
         let mut holes = HashMap::new();
         for idx in 0..self.args {
-            holes.insert(idx, Type::Hole(Variable::default()));
+            holes.insert(idx, env.fresh_type_variable());
         }
         go(&holes, self.mono.clone())
     }

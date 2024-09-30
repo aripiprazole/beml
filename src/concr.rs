@@ -118,7 +118,7 @@ pub struct File {
 
 pub fn lower_file(file: File) -> miette::Result<abstr::File> {
     let mut ctx = lowering::LoweringCtx::new(file.path.clone(), file.text);
-    let mut declarations = HashMap::new();
+    let mut declarations = HashMap::default();
     let terms = file
         .terms
         .into_iter()

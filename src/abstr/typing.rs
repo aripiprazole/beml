@@ -1,5 +1,6 @@
 use std::cell::Cell;
 
+use fxhash::FxBuildHasher;
 use miette::IntoDiagnostic;
 
 use crate::{
@@ -12,9 +13,9 @@ use super::*;
 #[derive(Clone, Default)]
 pub struct TypeEnv {
     pub(crate) src_pos: Loc,
-    pub(crate) types: im_rc::HashMap<String, hir::AlgebraicDataType>,
-    pub(crate) constructors_to_types: im_rc::HashMap<String, hir::Type>,
-    pub(crate) assumptions: im_rc::HashMap<String, hir::Scheme>,
+    pub(crate) types: im_rc::HashMap<String, hir::AlgebraicDataType, FxBuildHasher>,
+    pub(crate) constructors_to_types: im_rc::HashMap<String, hir::Type, FxBuildHasher>,
+    pub(crate) assumptions: im_rc::HashMap<String, hir::Scheme, FxBuildHasher>,
     pub(crate) errors: Rc<RefCell<Vec<miette::Report>>>,
     pub(crate) counter: Rc<Cell<usize>>,
 }
@@ -71,7 +72,7 @@ pub fn infer(env: &TypeEnv, term: Term) -> hir::Term {
             let cases = cases
                 .into_iter()
                 .map(|Case { pattern, body }| {
-                    let mut ctx = HashMap::new();
+                    let mut ctx = HashMap::default();
                     let mut local_env = env.clone();
                     pat::check_pat(&mut local_env, &mut ctx, pattern.clone(), scrutinee.type_repr.clone());
                     let body = infer(&local_env, body);
@@ -101,7 +102,7 @@ pub fn infer(env: &TypeEnv, term: Term) -> hir::Term {
         }
         Var(var) => match env.assumptions.get(&var.name.text) {
             Some(value) => hir::Term {
-                type_repr: value.instantiate(),
+                type_repr: value.instantiate(env),
                 src_pos: env.src_pos.clone(),
                 value: hir::TermKind::Var(var),
             },
@@ -130,7 +131,8 @@ pub fn infer(env: &TypeEnv, term: Term) -> hir::Term {
             }
         }
         Let(def, box value, box next) => {
-            let value = infer(env, value);
+            let trial = hir::Scheme::new(env.fresh_type_variable());
+            let value = infer(&env.extend(def.name.text.clone(), trial), value);
             let type_repr = value.type_repr.clone().generalize();
             let next = infer(&env.extend(def.name.text.clone(), type_repr), next);
 
@@ -188,7 +190,7 @@ pub(crate) mod decl {
                 });
 
                 Defer(Box::new(move |env| {
-                    let mut constructors = im_rc::HashMap::new();
+                    let mut constructors = im_rc::HashMap::default();
                     let mut vars = HashMap::new();
                     let target_type = match decl.variables.len() {
                         0 => hir::Type::Constructor(decl.def.clone().use_reference()),
@@ -247,7 +249,7 @@ pub(crate) mod decl {
                     return Defer(Box::new(|_| None));
                 };
                 let h = env.fresh_type_variable();
-                env.unify_catch(&tt, &h);
+                env.unify_catch(&h, &tt);
                 env.assumptions
                     .insert(decl.def.name.text.clone(), Scheme::new(h.clone()));
 
@@ -269,7 +271,7 @@ pub(crate) mod pat {
 
     use super::*;
 
-    pub type Pats<'a> = &'a mut HashMap<String, hir::Type>;
+    pub type Pats<'a> = &'a mut HashMap<String, hir::Type, FxBuildHasher>;
 
     pub struct Case {
         pub pattern: Pattern,

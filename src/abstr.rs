@@ -8,6 +8,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+use fxhash::FxBuildHasher;
 use typing::TypeEnv;
 pub use Body::*;
 pub use Decl::*;
@@ -179,7 +180,7 @@ impl Pattern {
 pub struct File {
     pub path: PathBuf,
     pub shebang: Option<String>,
-    pub declarations: HashMap<Identifier, Decl>,
+    pub declarations: HashMap<Identifier, Decl, FxBuildHasher>,
 }
 
 impl Definition {
@@ -197,7 +198,7 @@ impl Definition {
 /// Infer a file into a [hir::File]
 pub fn lower_file(file: File) -> miette::Result<hir::File> {
     let mut env = TypeEnv::default();
-    let mut definitions = im::HashMap::new();
+    let mut definitions = im::HashMap::default();
     let defers = file
         .declarations
         .into_iter()
