@@ -16,11 +16,17 @@ use miette::{IntoDiagnostic, NamedSource};
 
 /// Transforms the tokens into a concrete syntax tree.
 pub struct Parser<'a> {
+    // File and text
     file: PathBuf,
+    text: String,
     lexer: logos::Lexer<'a, crate::lexer::Token>,
+
+    // Parsing state
     curr: Option<Token>,
     terms: Vec<Term>,
-    text: String,
+    lastpos: usize,
+
+    // Error reporting and debugging
     errors: Vec<miette::Report>,
     #[cfg(debug_assertions)]
     gas: Cell<usize>,
@@ -42,6 +48,7 @@ impl<'a> Parser<'a> {
             errors: vec![],
             text: text.into(),
             terms: vec![],
+            lastpos: 0,
             gas: Cell::new(0),
         };
 
@@ -165,6 +172,8 @@ impl<'a> Parser<'a> {
             panic!("gas exhausted")
         }
 
+        self.lastpos = self.lexer.span().end;
+
         match self.lexer.next() {
             Some(Ok(value)) => {
                 self.curr = Some(value);
@@ -186,10 +195,9 @@ macro_rules! close {
         if let SrcPos(_, _) = value {
             return Ok(value);
         }
-        let e = $p.lexer.span();
         let span = Loc::Loc {
             startpos: m.start,
-            endpos: e.end,
+            endpos: $p.lastpos,
             path: $p.file.clone(),
         };
         Ok(SrcPos(value.into(), span))

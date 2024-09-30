@@ -386,6 +386,7 @@ mod tests {
         let mut p = Parser {
             file: PathBuf::new(),
             lexer: Token::lexer(text),
+            lastpos: 0,
             curr: None,
             text: text.into(),
             errors: vec![],
