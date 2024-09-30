@@ -14,11 +14,17 @@ struct Constructor {
     type_repr: Option<hir::Type>,
 }
 
+#[derive(Debug, Clone)]
+struct AlgebraicDataType {
+    definition: Arc<Definition>,
+    arity: usize,
+    constructors: im_rc::HashMap<String, Constructor>,
+}
+
 #[derive(Clone, Default)]
 pub struct TypeEnv {
     src_pos: Loc,
-    types: im_rc::HashMap<String, Arc<Definition>>,
-    types_to_constructors: im_rc::HashMap<String, im_rc::HashMap<String, Constructor>>,
+    types: im_rc::HashMap<String, AlgebraicDataType>,
     constructors_to_types: im_rc::HashMap<String, hir::Type>,
     assumptions: im_rc::HashMap<String, hir::Scheme>,
     errors: Rc<RefCell<Vec<miette::Report>>>,
@@ -171,6 +177,43 @@ pub fn check(env: &TypeEnv, term: Term, expected: hir::Type) -> hir::Term {
             let term = infer(env, term);
             env.unify_catch(expected, term.type_repr.clone());
             term
+        }
+    }
+}
+
+/// Declaration inference, used for statement checking and declaration checking
+/// in let expressions.
+mod decl {
+    use super::*;
+
+    pub struct Defer(pub Box<dyn FnOnce(&mut TypeEnv)>);
+
+    fn infer_decl(env: &mut TypeEnv, decl: Decl) -> Defer {
+        match decl {
+            Decl::TypeDecl(decl) => {
+                env.src_pos = decl.loc.clone();
+
+                Defer(Box::new(|_| {}))
+            }
+            Decl::LetDecl(decl) => {
+                env.src_pos = decl.loc.clone();
+                let tt = hir::Type::new(decl.type_repr, env);
+                let Body::Value(term) = decl.body else {
+                    let scheme = tt.generalize();
+                    env.assumptions.insert(decl.def.name.text.clone(), scheme);
+                    return Defer(Box::new(|_| {}));
+                };
+                let h = env.fresh_type_variable();
+                env.unify_catch(tt.clone(), h.clone());
+                env.assumptions
+                    .insert(decl.def.name.text.clone(), Scheme::new(h.clone()));
+
+                Defer(Box::new(move |env| {
+                    let value = infer(env, term);
+                    env.unify_catch(h.clone(), value.type_repr.clone());
+                    env.assumptions.insert(decl.def.name.text.clone(), Scheme::new(h));
+                }))
+            }
         }
     }
 }
@@ -367,7 +410,7 @@ mod pat {
                 check_pat(env, ctx, pat, expected)
             }
             (Constructor(constructor, None), hir::Type::Constructor(type_repr)) => {
-                let Some(constructors) = env.types_to_constructors.get(&type_repr.name.text) else {
+                let Some(AlgebraicDataType { constructors, .. }) = env.types.get(&type_repr.name.text) else {
                     env.report(IncompatiblePatternTypeError);
                     return hir::Type::Constructor(type_repr);
                 };
@@ -379,14 +422,14 @@ mod pat {
                 hir::Type::Constructor(type_repr)
             }
             (Constructor(constructor, Some(box pat)), hir::Type::Constructor(type_repr)) => {
-                let Some(constructors) = env.types_to_constructors.get(&type_repr.name.text) else {
+                let Some(AlgebraicDataType { constructors, .. }) = env.types.get(&type_repr.name.text) else {
                     env.report(IncompatiblePatternTypeError);
                     return hir::Type::Constructor(type_repr);
                 };
                 let Some(Constructor {
                     type_repr: Some(expected),
                     ..
-                }) = constructors.get(&constructor.name.text)
+                }) = adt.get(&constructor.name.text)
                 else {
                     env.report(UnresolvedConstructorError);
                     return hir::Type::Constructor(type_repr);
@@ -421,8 +464,16 @@ mod pat {
             let cons = Definition::new("Cons");
             let nil = Definition::new("Nil");
 
-            env.types.insert("int".into(), Definition::new("int"));
-            env.types.insert("list".into(), Definition::new("list"));
+            env.types.insert("int".into(), AlgebraicDataType {
+                definition: Definition::new("int"),
+                arity: 0,
+                constructors: Default::default(),
+            });
+            env.types.insert("list".into(), AlgebraicDataType {
+                definition: Definition::new("list"),
+                arity: 0,
+                constructors: Default::default(),
+            });
 
             let scrutinee = infer(&env, Term::List(vec![]));
             dbg!(specialize(scrutinee, vec![
@@ -465,7 +516,7 @@ impl TypeEnv {
     }
 
     pub fn get_type(&self, name: &str) -> Reference {
-        self.types.get(name).unwrap().clone().use_reference()
+        self.types.get(name).unwrap().clone().definition.use_reference()
     }
 
     pub fn extend(&self, name: String, poly: hir::Scheme) -> Self {

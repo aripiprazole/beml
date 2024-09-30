@@ -58,14 +58,14 @@ impl LoweringCtx {
 
                     if let abstr::Variable(variable) = pattern {
                         Ok(abstr::Decl::LetDecl(abstr::LetDecl {
-                            name: variable,
+                            def: variable,
                             type_repr: fun_type,
                             body: abstr::Value(body),
                             loc: src_pos,
                         }))
                     } else {
                         Ok(abstr::Decl::LetDecl(abstr::LetDecl {
-                            name: ctx.new_fresh_variable(),
+                            def: ctx.new_fresh_variable(),
                             type_repr: fun_type,
                             body: abstr::Value(abstr::Match(body.into(), vec![abstr::Case {
                                 pattern,
@@ -82,7 +82,7 @@ impl LoweringCtx {
                 Defer(Box::new(|ctx| {
                     let type_repr = ctx.clone().parse_type(type_repr)?;
                     Ok(abstr::Decl::LetDecl(abstr::LetDecl {
-                        name,
+                        def: name,
                         type_repr,
                         body: abstr::No,
                         loc: src_pos,

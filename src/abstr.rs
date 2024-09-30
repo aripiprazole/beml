@@ -108,7 +108,7 @@ pub enum Body {
 
 #[derive(Debug, Clone)]
 pub struct LetDecl {
-    pub name: Arc<Definition>,
+    pub def: Arc<Definition>,
     pub type_repr: Type,
     pub body: Body,
     pub loc: crate::loc::Loc,
@@ -116,7 +116,7 @@ pub struct LetDecl {
 
 impl Declaration for LetDecl {
     fn name(&self) -> Arc<Definition> {
-        self.name.clone()
+        self.def.clone()
     }
 }
 
