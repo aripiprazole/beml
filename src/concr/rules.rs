@@ -17,11 +17,12 @@ pub fn lower_term(mut ctx: LoweringCtx, term: Term) -> miette::Result<abstr::Ter
         // fun x y z -> body
         Fun(parameters, box body) => {
             let mut ctx = ctx.clone();
-            Ok(parameters
+            let parameters = parameters
                 .into_iter()
                 .rev()
                 .map(|parameter| ctx.new_variable(parameter))
-                .collect::<Vec<_>>()
+                .collect::<Vec<_>>();
+            Ok(parameters
                 .into_iter()
                 .fold(lower_term(ctx, body)?, |acc, parameter| abstr::Fun(parameter, acc.into())))
         }
@@ -325,7 +326,7 @@ pub mod decl {
 
                 Defer(Box::new(|_| {
                     Ok(abstr::Decl::TypeDecl(abstr::TypeDecl {
-                        name,
+                        def: name,
                         variables,
                         cases,
                         loc: src_pos,

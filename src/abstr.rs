@@ -88,7 +88,7 @@ pub struct Constructor {
 
 #[derive(Debug, Clone)]
 pub struct TypeDecl {
-    pub name: Arc<Definition>,
+    pub def: Arc<Definition>,
     pub variables: Vec<crate::loc::Identifier>,
     pub cases: Vec<Constructor>,
     pub loc: crate::loc::Loc,
@@ -96,7 +96,7 @@ pub struct TypeDecl {
 
 impl Declaration for TypeDecl {
     fn name(&self) -> Arc<Definition> {
-        self.name.clone()
+        self.def.clone()
     }
 }
 

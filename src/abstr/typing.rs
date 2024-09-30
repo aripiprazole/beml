@@ -181,8 +181,62 @@ pub(crate) mod decl {
         match decl {
             Decl::TypeDecl(decl) => {
                 env.src_pos = decl.loc.clone();
+                env.types.insert(decl.def.name.text.clone(), hir::AlgebraicDataType {
+                    definition: decl.def.clone(),
+                    arity: decl.variables.len(),
+                    constructors: Default::default(),
+                });
 
-                Defer(Box::new(|_| None))
+                Defer(Box::new(move |env| {
+                    let mut constructors = im_rc::HashMap::new();
+                    let mut vars = HashMap::new();
+                    let target_type = match decl.variables.len() {
+                        0 => hir::Type::Constructor(decl.def.clone().use_reference()),
+                        1 => hir::Type::App(decl.def.clone().use_reference(), env.fresh_type_variable().into()),
+                        _ => {
+                            let variables = decl
+                                .variables
+                                .clone()
+                                .into_iter()
+                                .map(|variable| {
+                                    vars.entry(variable.text.clone())
+                                        .or_insert_with(|| env.fresh_type_variable())
+                                        .clone()
+                                })
+                                .collect();
+
+                            hir::Type::App(decl.def.clone().use_reference(), hir::Type::Tuple(variables).into())
+                        }
+                    };
+
+                    for Constructor { name: def, type_repr } in decl.cases {
+                        match type_repr {
+                            Some(type_repr) => {
+                                let type_repr = hir::Type::new(type_repr, env);
+                                constructors.insert(def.name.text.clone(), hir::Constructor {
+                                    type_repr: Some(type_repr.clone()),
+                                });
+                                env.assumptions.insert(
+                                    def.name.text.clone(),
+                                    hir::Type::Fun(type_repr.into(), target_type.clone().into()).generalize(),
+                                );
+                            }
+                            None => {
+                                env.assumptions
+                                    .insert(def.name.text.clone(), target_type.clone().generalize());
+                                constructors.insert(def.name.text.clone(), hir::Constructor { type_repr: None });
+                            }
+                        }
+                    }
+
+                    env.types.insert(decl.def.name.text.clone(), hir::AlgebraicDataType {
+                        definition: decl.def.clone(),
+                        arity: decl.variables.len(),
+                        constructors,
+                    });
+
+                    None
+                }))
             }
             Decl::LetDecl(decl) => {
                 env.src_pos = decl.loc.clone();
