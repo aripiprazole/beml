@@ -110,19 +110,17 @@ pub fn lower_term(mut ctx: LoweringCtx, term: Term) -> miette::Result<abstr::Ter
             Ok(abstr::List(elements))
         }
 
-        // (x) or (x, y, z, ..)
-        Parens(box value) => {
-            if let BinOp(_, BinOp::Comma, _) = value {
-                let elements = ctx
-                    .sep_by(BinOp::Comma, value)?
-                    .into_iter()
-                    .filter_map(|term| ctx.or_none(lower_term(ctx.clone(), term)))
-                    .collect::<Vec<_>>();
-                Ok(abstr::Pair(elements))
-            } else {
-                lower_term(ctx, value) // (x)
-            }
+        // (x, y, z, ..)
+        Parens(value @ box BinOp(_, BinOp::Comma, _) | value @ box SrcPos(box BinOp(_, BinOp::Comma, _), _)) => {
+            let elements = ctx
+                .sep_by(BinOp::Comma, *value)?
+                .into_iter()
+                .filter_map(|term| ctx.or_none(lower_term(ctx.clone(), term)))
+                .collect::<Vec<_>>();
+            Ok(abstr::Pair(elements))
         }
+
+        Parens(box value) => lower_term(ctx, value), // (x)
 
         Text(crate::loc::Text { value, loc }) => Ok(abstr::Text(crate::loc::Text { value, loc })),
 
