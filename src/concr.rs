@@ -19,6 +19,7 @@ pub use Term::*;
 
 mod errors;
 mod lowering;
+mod rules;
 
 #[derive(Debug)]
 pub struct TypeDecl {
@@ -121,9 +122,9 @@ pub fn lower_file(file: File) -> miette::Result<abstr::File> {
     let terms = file
         .terms
         .into_iter()
-        .map(|decl| ctx.do_declaration_lowering(decl))
+        .map(|decl| rules::decl::lower_decl(&mut ctx, decl))
         .collect::<miette::Result<Vec<_>>>()?;
-    for lowering::decl::Defer(f) in terms {
+    for rules::decl::Defer(f) in terms {
         let mut local = ctx.clone();
         let decl = f(&mut local)?;
 
