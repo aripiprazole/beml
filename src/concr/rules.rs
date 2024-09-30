@@ -187,11 +187,15 @@ pub fn lower_type(mut ctx: LoweringCtx, term: Term) -> miette::Result<abstr::Typ
                 .collect::<Vec<_>>();
             Ok(abstr::Type::Pair(elements))
         }
-        BinOp(box domain, BinOp::Arrow, box codomain) => {
-            let domain = lower_type(ctx.clone(), domain)?;
-            let codomain = lower_type(ctx.clone(), codomain)?;
-            Ok(abstr::Type::Fun(domain.into(), codomain.into()))
-        }
+        BinOp(_, BinOp::Arrow, _) => Ok(ctx
+            .sep_by(BinOp::Arrow, term)?
+            .into_iter()
+            .map(|term| match ctx.or_none(lower_type(ctx.clone(), term)) {
+                Some(value) => value,
+                None => abstr::Type::Hole,
+            })
+            .reduce(|acc, value| abstr::Type::Fun(value.into(), acc.into()))
+            .expect("this should never fail because we have at least two elements.")),
         Var(name) => ctx
             .lookup_type(name)
             .map(|definition| abstr::Type::Constructor(definition.use_reference()))
