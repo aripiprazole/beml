@@ -10,32 +10,6 @@ use crate::{
     loc::Loc,
 };
 
-#[derive(Debug, Clone)]
-pub struct Constructor {
-    pub type_repr: Option<Type>,
-}
-
-#[derive(Debug, Clone)]
-pub struct AlgebraicDataType {
-    pub definition: Arc<Definition>,
-    pub arity: usize,
-    pub constructors: im_rc::HashMap<String, Constructor>,
-}
-
-#[derive(Debug, Clone)]
-pub struct Value {
-    pub scheme: Scheme,
-    pub value: Term,
-}
-
-/// A file is a collection of definitions and algebraic data types.
-#[derive(Debug, Clone)]
-pub struct File {
-    pub path: PathBuf,
-    pub algebraic_data_types: im::HashMap<String, AlgebraicDataType>,
-    pub definitions: im::HashMap<String, Term>,
-}
-
 /// A term is a node in the HIR. It has a [TermKind] and a type. It holds
 /// the location and type information of the term.
 #[derive(Debug, Clone)]
@@ -43,6 +17,23 @@ pub struct Term {
     pub value: TermKind,
     pub src_pos: Loc,
     pub type_repr: Type,
+}
+
+/// Means that something can be typed.
+pub trait Typeable {
+    fn type_of(&self) -> Type;
+}
+
+impl Typeable for Type {
+    fn type_of(&self) -> Type {
+        self.clone()
+    }
+}
+
+impl Typeable for Term {
+    fn type_of(&self) -> Type {
+        self.type_repr.clone()
+    }
 }
 
 /// Kind of a term. It is used to represent the different kinds of terms
@@ -145,11 +136,46 @@ pub enum Type {
     Hole(Variable),
 }
 
+pub fn fun_type(domain: &Type, codomain: &Type) -> Type {
+    Type::Fun(domain.clone().into(), codomain.clone().into())
+}
+
+pub fn app_type(env: &TypeEnv, name: Reference, argument: Type) -> Type {
+    let _ = env; // TODO: check arity
+    Type::App(name, argument.into())
+}
+
 /// Type scheme. It's the polymorphic type of a term in the HIR.
 #[derive(Debug, Clone)]
 pub struct Scheme {
     pub args: usize,
     pub mono: Type,
+}
+
+#[derive(Debug, Clone)]
+pub struct Constructor {
+    pub type_repr: Option<Type>,
+}
+
+#[derive(Debug, Clone)]
+pub struct AlgebraicDataType {
+    pub definition: Arc<Definition>,
+    pub arity: usize,
+    pub constructors: im_rc::HashMap<String, Constructor>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Value {
+    pub scheme: Scheme,
+    pub value: Term,
+}
+
+/// A file is a collection of definitions and algebraic data types.
+#[derive(Debug, Clone)]
+pub struct File {
+    pub path: PathBuf,
+    pub algebraic_data_types: im::HashMap<String, AlgebraicDataType>,
+    pub definitions: im::HashMap<String, Term>,
 }
 
 /// A variable is a mutable reference to a type. It is used to represent

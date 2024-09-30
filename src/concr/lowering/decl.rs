@@ -1,5 +1,6 @@
 use super::*;
 
+#[allow(clippy::type_complexity)]
 pub struct Defer(pub Box<dyn FnOnce(&mut LoweringCtx) -> miette::Result<abstr::Decl>>);
 
 impl LoweringCtx {
@@ -89,7 +90,7 @@ impl LoweringCtx {
                     }))
                 }))
             }
-            _ => return Err(DeclSyntaxError).into_diagnostic(),
+            _ => return self.wrap_error(DeclSyntaxError),
         })
     }
 

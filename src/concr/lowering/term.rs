@@ -126,9 +126,9 @@ impl LoweringCtx {
                 Ok(abstr::If(condition.into(), then.into(), otherwise.into()))
             }
 
-            _ => match self.parse_type(term) {
-                Ok(_) => Err(TermSyntaxError).into_diagnostic()?,
-                Err(_) => Err(TypeSyntaxAtTermLevelError).into_diagnostic(),
+            _ => match self.clone().parse_type(term) {
+                Ok(_) => self.wrap_error(TermSyntaxError),
+                Err(_) => self.wrap_error(TypeSyntaxAtTermLevelError),
             },
         }
     }
@@ -143,7 +143,7 @@ impl LoweringCtx {
             App(box argument, box callee) => {
                 let argument = self.clone().parse_type(argument)?;
                 let abstr::Type::Constructor(callee) = self.clone().parse_type(callee)? else {
-                    Err(TypeCalleeIsNotAConstructorError).into_diagnostic()?
+                    self.wrap_error(TypeCalleeIsNotAConstructorError)?
                 };
                 if callee.name.text == "local" {
                     return Ok(abstr::Type::Local(argument.into()));
@@ -174,7 +174,7 @@ impl LoweringCtx {
                 .lookup_type(name)
                 .map(|definition| abstr::Type::Constructor(definition.use_reference()))
                 .into_diagnostic(),
-            _ => Err(TypeSyntaxError).into_diagnostic(),
+            _ => self.wrap_error(TypeSyntaxError),
         }
     }
 
@@ -191,9 +191,9 @@ impl LoweringCtx {
                 let type_repr = self.clone().parse_type(type_repr)?;
                 Ok((abstr::Variable(name), type_repr))
             }
-            Parens(_) => Err(UnexpectedParameterAscriptionSyntaxError).into_diagnostic(),
+            Parens(_) => self.wrap_error(UnexpectedParameterAscriptionSyntaxError),
             Var(name) => Ok((abstr::Variable(self.new_variable(name)), abstr::Type::Hole)),
-            _ => Err(UnexpectedParameterSyntaxError).into_diagnostic(),
+            _ => self.wrap_error(UnexpectedParameterSyntaxError),
         }
     }
 }
@@ -204,7 +204,7 @@ mod tests {
 
     #[test]
     fn test_let_f_x_in_x() {
-        let ctx = LoweringCtx::default();
+        let ctx = LoweringCtx::new("".into(), "".into());
         crate::aux::golden_test! {
             expected:
 r#"Ok(

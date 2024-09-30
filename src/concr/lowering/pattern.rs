@@ -11,8 +11,11 @@ impl LoweringCtx {
                 Ok(match self.lookup_constructor(name.clone()) {
                     Ok(def) => abstr::Constructor(def.use_reference(), None),
                     Err(error) => {
-                        let definition = self.new_variable(name);
-                        self.report_error(UncapitalizeVariableError { error: Some(error) });
+                        let definition = self.new_variable(name.clone());
+                        self.report_error(UncapitalizeVariableError {
+                            name: name.text,
+                            error: Some(error),
+                        });
                         abstr::Variable(definition)
                     }
                 })
@@ -24,7 +27,7 @@ impl LoweringCtx {
                     .map_err(|error| PatternConstructorAppError { error })
                     .into_diagnostic()?
                 else {
-                    return Err(ExpectedConstructorError).into_diagnostic();
+                    return self.wrap_error(ExpectedConstructorError);
                 };
 
                 if parameters.is_some() {

@@ -109,10 +109,11 @@ pub struct File {
     pub path: PathBuf,
     pub shebang: Option<String>,
     pub terms: Vec<Term>,
+    pub text: String,
 }
 
 pub fn lower_file(file: File) -> miette::Result<abstr::File> {
-    let mut ctx = lowering::LoweringCtx::default();
+    let mut ctx = lowering::LoweringCtx::new(file.path.clone(), file.text);
     let mut declarations = HashMap::new();
     let terms = file
         .terms

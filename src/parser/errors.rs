@@ -14,7 +14,7 @@ pub struct UnexpectedToken {
     pub span: crate::loc::Loc,
 
     #[source_code]
-    pub code: NamedSource<String>,
+    pub code: NamedSource,
 }
 
 #[derive(Debug, thiserror::Error, miette::Diagnostic)]
@@ -27,7 +27,7 @@ pub struct ExpectedToken {
     pub span: crate::loc::Loc,
 
     #[source_code]
-    pub code: NamedSource<String>,
+    pub code: NamedSource,
 }
 
 macro_rules! recover {

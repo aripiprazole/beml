@@ -3,7 +3,7 @@ use std::cell::Cell;
 use miette::IntoDiagnostic;
 
 use crate::{
-    hir::{self, Scheme},
+    hir::{self, Scheme, Typeable},
     loc::Loc,
 };
 
@@ -30,16 +30,19 @@ pub fn infer(env: &TypeEnv, term: Term) -> hir::Term {
         // [x] : a list
         List(elements) => {
             let h = env.fresh_type_variable();
-            let mut new_elements = vec![];
-            for element in elements {
-                let element = infer(env, element);
-                env.unify_catch(h.clone(), element.type_repr.clone());
-                new_elements.push(element);
-            }
+            let elements = elements
+                .into_iter()
+                .map(|element| {
+                    let element = infer(env, element);
+                    env.unify_catch(&h, &element);
+                    element
+                })
+                .collect::<Vec<_>>();
+
             hir::Term {
                 src_pos: env.src_pos.clone(),
-                type_repr: hir::Type::App(env.get_type("list"), h.into()),
-                value: hir::TermKind::List(new_elements),
+                value: hir::TermKind::List(elements),
+                type_repr: hir::app_type(env, env.get_type("list"), h),
             }
         }
         Pair(elements) => {
@@ -72,7 +75,7 @@ pub fn infer(env: &TypeEnv, term: Term) -> hir::Term {
                     let mut local_env = env.clone();
                     pat::check_pat(&mut local_env, &mut ctx, pattern.clone(), scrutinee.type_repr.clone());
                     let body = infer(&local_env, body);
-                    env.unify_catch(h.clone(), body.type_repr.clone());
+                    env.unify_catch(&h, &body);
                     pat::Case { pattern, body }
                 })
                 .collect::<Vec<_>>();
@@ -88,10 +91,7 @@ pub fn infer(env: &TypeEnv, term: Term) -> hir::Term {
             let h = env.fresh_type_variable();
             let callee = infer(env, callee);
             let argument = infer(env, argument);
-            env.unify_catch(
-                hir::Type::Fun(argument.type_repr.clone().into(), h.clone().into()),
-                callee.type_repr.clone(),
-            );
+            env.unify_catch(&hir::fun_type(&argument.type_repr, &h), &callee);
 
             hir::Term {
                 type_repr: h,
@@ -121,7 +121,7 @@ pub fn infer(env: &TypeEnv, term: Term) -> hir::Term {
             let condition = check(env, condition, hir::Type::Constructor(env.get_type("bool")));
             let then = infer(env, then);
             let otherwise = infer(env, otherwise);
-            env.unify_catch(then.type_repr.clone(), otherwise.type_repr.clone());
+            env.unify_catch(&then, &otherwise.type_repr);
 
             hir::Term {
                 src_pos: env.src_pos.clone(),
@@ -163,7 +163,7 @@ pub fn check(env: &TypeEnv, term: Term, expected: hir::Type) -> hir::Term {
         }
         (term, expected) => {
             let term = infer(env, term);
-            env.unify_catch(expected, term.type_repr.clone());
+            env.unify_catch(&expected, &term);
             term
         }
     }
@@ -193,13 +193,13 @@ pub(crate) mod decl {
                     return Defer(Box::new(|_| None));
                 };
                 let h = env.fresh_type_variable();
-                env.unify_catch(tt.clone(), h.clone());
+                env.unify_catch(&tt, &h);
                 env.assumptions
                     .insert(decl.def.name.text.clone(), Scheme::new(h.clone()));
 
                 Defer(Box::new(move |env| {
                     let value = infer(env, term);
-                    env.unify_catch(h.clone(), value.type_repr.clone());
+                    env.unify_catch(&h, &value);
                     env.assumptions.insert(decl.def.name.text.clone(), Scheme::new(h));
                     Some(value)
                 }))
@@ -438,7 +438,7 @@ pub(crate) mod pat {
             }
             (term, expected) => {
                 let inferred = infer_pat(env, ctx, term);
-                env.unify_catch(expected.clone(), inferred.clone());
+                env.unify_catch(&expected, &inferred);
                 expected
             }
         }
@@ -523,8 +523,8 @@ impl TypeEnv {
         self.report_direct_error(Err::<(), _>(error).into_diagnostic().unwrap_err());
     }
 
-    pub fn unify_catch(&self, lhs: hir::Type, rhs: hir::Type) {
-        if let Err(err) = lhs.unify(rhs).into_diagnostic() {
+    pub fn unify_catch<A: Typeable, B: Typeable>(&self, lhs: &A, rhs: &B) {
+        if let Err(err) = lhs.type_of().unify(rhs.type_of()).into_diagnostic() {
             self.report_direct_error(err);
         }
     }

@@ -1,21 +1,36 @@
-// can't find the constructor
-#[derive(Debug, thiserror::Error, miette::Diagnostic)]
-#[error("can't find the constructor")]
-pub struct UnresolvedConstructorError;
+use std::fmt::Display;
+
+use miette::NamedSource;
+
+use super::loc::Loc;
 
 // can't find the constructor
 #[derive(Debug, thiserror::Error, miette::Diagnostic)]
-#[error("can't find the variable")]
-pub struct UnresolvedVariableError;
+#[error("can't find the constructor: {name}")]
+pub struct UnresolvedConstructorError {
+    pub name: String,
+}
+
+// can't find the constructor
+#[derive(Debug, thiserror::Error, miette::Diagnostic)]
+#[error("can't find the variable: {name}")]
+pub struct UnresolvedVariableError {
+    pub name: String,
+}
 
 #[derive(Debug, thiserror::Error, miette::Diagnostic)]
-#[error("can't find the type")]
-pub struct UnresolvedTypeError;
+#[error("can't find the type: {name}")]
+pub struct UnresolvedTypeError {
+    pub name: String,
+}
 
 // can't find the constructor, so if it is a variable pattern, uncapitalize it
 #[derive(Debug, thiserror::Error, miette::Diagnostic)]
-#[error("can't find the constructor")]
+#[error("capitalized variables should be constructors and not variables: {name}")]
 pub struct UncapitalizeVariableError {
+    pub name: String,
+
+    #[related]
     pub error: Option<UnresolvedConstructorError>,
 }
 
@@ -78,11 +93,23 @@ pub struct TypeSyntaxAtTermLevelError;
 pub struct TermSyntaxAtDeclLevelError;
 
 #[derive(Debug, thiserror::Error, miette::Diagnostic)]
-#[error("unexpected symbol error")]
 pub enum UnresolvedSymbolError {
-    #[error("can't find the symbol")]
+    #[error("{0}")]
     UnresolvedConstructorError(UnresolvedConstructorError),
 
-    #[error("can't find the symbol")]
+    #[error("{0}")]
     UnresolvedVariableError(UnresolvedVariableError),
+}
+
+#[derive(Debug, thiserror::Error, miette::Diagnostic)]
+#[error("{source}")]
+pub struct LoweringError<E: miette::Diagnostic + Display + std::error::Error + Send + Sync + 'static> {
+    #[label("here")]
+    pub loc: Loc,
+
+    #[source_code]
+    pub source_code: NamedSource,
+
+    #[source]
+    pub source: E,
 }

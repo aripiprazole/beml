@@ -54,6 +54,7 @@ impl<'a> Parser<'a> {
             terms: p.terms,
             path: p.file,
             shebang: None,
+            text: text.into(),
         })
     }
 
