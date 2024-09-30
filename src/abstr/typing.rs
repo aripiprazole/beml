@@ -3,7 +3,7 @@ use std::cell::Cell;
 use miette::IntoDiagnostic;
 
 use crate::{
-    hir::{self, Poly},
+    hir::{self, Scheme},
     loc::Loc,
 };
 
@@ -11,21 +11,21 @@ use super::*;
 
 #[derive(Debug, Clone)]
 struct Constructor {
-    name: Arc<Definition>,
     type_repr: Option<hir::Type>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct TypeEnv {
     src_pos: Loc,
     types: im_rc::HashMap<String, Arc<Definition>>,
     types_to_constructors: im_rc::HashMap<String, im_rc::HashMap<String, Constructor>>,
     constructors_to_types: im_rc::HashMap<String, hir::Type>,
-    assumptions: im_rc::HashMap<String, hir::Poly>,
+    assumptions: im_rc::HashMap<String, hir::Scheme>,
     errors: Rc<RefCell<Vec<miette::Report>>>,
-    counter: Rc<Cell<usize>>,
 }
 
+/// Infers the type of a term. It returns a [crate::hir::Term] with the
+/// new type and location information.
 pub fn infer(env: &TypeEnv, term: Term) -> hir::Term {
     match term {
         SrcPos(box term, src_pos) => infer(&TypeEnv { src_pos, ..env.clone() }, term),
@@ -58,7 +58,7 @@ pub fn infer(env: &TypeEnv, term: Term) -> hir::Term {
         }
         Fun(parameter, box body) => {
             let h = env.fresh_type_variable();
-            let fun_env = env.extend(parameter.name.text.clone(), Poly::new(h));
+            let fun_env = env.extend(parameter.name.text.clone(), Scheme::new(h));
             let body = infer(&fun_env, body);
 
             hir::Term {
@@ -70,14 +70,23 @@ pub fn infer(env: &TypeEnv, term: Term) -> hir::Term {
         Match(box scrutinee, cases) => {
             let scrutinee = infer(env, scrutinee);
             let h = env.fresh_type_variable();
-            for Case { pattern, body } in cases {
-                let mut ctx = HashMap::new();
-                let mut local_env = env.clone();
-                pat::check_pat(&mut local_env, &mut ctx, pattern, scrutinee.type_repr.clone());
-                let body = infer(&local_env, body);
-                env.unify_catch(h.clone(), body.type_repr.clone());
+            let cases = cases
+                .into_iter()
+                .map(|Case { pattern, body }| {
+                    let mut ctx = HashMap::new();
+                    let mut local_env = env.clone();
+                    pat::check_pat(&mut local_env, &mut ctx, pattern.clone(), scrutinee.type_repr.clone());
+                    let body = infer(&local_env, body);
+                    env.unify_catch(h.clone(), body.type_repr.clone());
+                    pat::Case { pattern, body }
+                })
+                .collect::<Vec<_>>();
+
+            hir::Term {
+                type_repr: h,
+                src_pos: env.src_pos.clone(),
+                value: hir::TermKind::Match(pat::specialize(scrutinee, cases)),
             }
-            todo!()
         }
         Ascription(box term, type_repr) => check(env, term, hir::Type::from(type_repr)),
         App(box callee, box argument) => {
@@ -139,6 +148,34 @@ pub fn infer(env: &TypeEnv, term: Term) -> hir::Term {
     }
 }
 
+/// Checks the type of a term against an expected type. It returns a [crate::hir::Term]
+/// with the new type and location information.
+///
+/// It also checks that the type is compatible with the expected type, and reports errors
+/// if it is not.
+pub fn check(env: &TypeEnv, term: Term, expected: hir::Type) -> hir::Term {
+    match (term, expected) {
+        (Term::SrcPos(box term, src_pos), expected) => check(&TypeEnv { src_pos, ..env.clone() }, term, expected),
+        (Term::Fun(parameter, box body), hir::Type::Fun(box domain, box codomain)) => {
+            let env = env.extend(parameter.name.text.clone(), hir::Scheme::new(domain.clone()));
+            let body = check(&env, body, codomain.clone());
+
+            hir::Term {
+                src_pos: env.src_pos.clone(),
+                type_repr: hir::Type::Fun(domain.into(), codomain.into()),
+                value: hir::TermKind::Fun(parameter, body.into()),
+            }
+        }
+        (term, expected) => {
+            let term = infer(env, term);
+            env.unify_catch(expected, term.type_repr.clone());
+            term
+        }
+    }
+}
+
+/// Pattern inference, used for coverage checking and pattern checking
+/// in match expressions.
 mod pat {
     use hir::{IncompatiblePatternTypeError, UnresolvedConstructorError};
 
@@ -146,6 +183,155 @@ mod pat {
 
     pub type Pats<'a> = &'a mut HashMap<String, hir::Type>;
 
+    pub struct Case {
+        pub pattern: Pattern,
+        pub body: hir::Term,
+    }
+
+    /// Compiles a pattern into a [hir::CaseTree].
+    ///
+    /// ```ocaml
+    /// match x with
+    /// | Cons (Cons (x, xs), xs) => true
+    /// | Cons (Nil, xs) => false
+    /// | Nil => false
+    /// ```
+    ///
+    /// Will translate into the pseudo-code:
+    ///
+    /// ```rust,ignore
+    /// CaseTree::Branch {
+    ///    occurence: Reference(x),
+    ///    cases: vec![
+    ///        (Condition::Constructor(Reference(Cons), vec![Occurence::Index(0), Occurence::Variable(xs)]), CaseTree::Branch {
+    ///            occurence: Occurence::Index(0),
+    ///            cases: vec![
+    ///                (Condition::Constructor(Reference(Cons), vec![Occurence::Variable(x), Occurence::Variable(xs)]), CaseTree::Leaf(true)),
+    ///                (Condition::Constructor(Reference(Nil)), CaseTree::Leaf(false)),
+    ///            ],
+    ///            default: None,
+    ///        }),
+    ///        (Condition::Constructor(Reference(Nil)), CaseTree::Leaf(false)),
+    ///    ],
+    ///    default: None,
+    /// }
+    /// ```
+    ///
+    /// And this more complex example:
+    ///
+    /// ```ocaml
+    /// match x with
+    /// | Cons (Cons (x, xs), (Cons x', xs')) => true
+    /// | Cons (Nil, xs) => false
+    /// | Nil => false
+    /// ```
+    ///
+    /// Will translate into the pseudo-code:
+    ///
+    /// ```rust,ignore
+    /// CaseTree::Branch {
+    ///    occurence: Reference(x),
+    ///    cases: vec![
+    ///        (Condition::Constructor(Reference(Cons), vec![Occurence::Index(0), Occurence::Index(1)]), CaseTree::Branch {
+    ///            occurence: Occurence::Index(0),
+    ///            cases: vec![
+    ///                (Condition::Constructor(Reference(Cons), vec![Occurence::Variable(x), Occurence::Variable(xs)]), CaseTree::Branch {
+    ///                    occurence: Occurence::Index(1),
+    ///                    cases: vec![
+    ///                        (Condition::Constructor(Reference(Cons), vec![Occurence::Variable(x'), Occurence::Variable(xs')]), CaseTree::Leaf(true)),
+    ///                        (Condition::Constructor(Reference(Nil)), CaseTree::Leaf(false)),
+    ///                    ],
+    ///                    default: None,
+    ///                }),
+    ///                (Condition::Constructor(Reference(Nil)), CaseTree::Leaf(false)),
+    ///            ],
+    ///            default: None,
+    ///        }),
+    ///        (Condition::Constructor(Reference(Nil)), CaseTree::Leaf(false)),
+    ///    ],
+    ///    default: None,
+    /// }
+    /// ```
+    pub fn specialize(scrutinee: hir::Term, cases: Vec<Case>) -> hir::CaseTree {
+        type Specialization = (Option<hir::Condition>, hir::CaseTree);
+
+        fn into_case_tree(idx: usize, (condition, case_tree): Specialization) -> hir::CaseTree {
+            match condition {
+                Some(condition) => hir::CaseTree::Branch {
+                    occurence: hir::Occurrence::Index(idx),
+                    cases: vec![(condition, case_tree)],
+                    default: None,
+                },
+                None => hir::CaseTree::Branch {
+                    occurence: hir::Occurrence::Index(idx),
+                    cases: vec![],
+                    default: Some(case_tree.into()),
+                },
+            }
+        }
+
+        fn go(loc: Loc, idx: usize, pattern: Pattern, body: hir::CaseTree) -> Specialization {
+            match pattern {
+                PatternSrcPos(box pattern, src_pos) => go(src_pos, idx, pattern, body),
+                Variable(var) => (None, hir::CaseTree::Branch {
+                    occurence: hir::Occurrence::Variable(var),
+                    cases: vec![],
+                    default: Some(Box::new(body)),
+                }),
+                Constructor(constructor, None) => (Some(hir::Condition::Constructor(constructor, None)), body),
+                Constructor(constructor, Some(box pattern)) => (
+                    Some(hir::Condition::Constructor(constructor, Some(idx + 1))),
+                    into_case_tree(idx + 1, go(loc, idx + 1, pattern, body)),
+                ),
+                Elements(elements) => {
+                    let mut target = body;
+                    for (sub_index, pattern) in elements.iter().enumerate() {
+                        let (condition, case_tree) = go(loc.clone(), idx + sub_index, pattern.clone(), target.clone());
+                        target = match condition {
+                            Some(condition) => hir::CaseTree::Branch {
+                                occurence: hir::Occurrence::Tuple(idx, sub_index),
+                                cases: vec![(condition, case_tree)],
+                                default: None,
+                            },
+                            None => hir::CaseTree::Branch {
+                                occurence: hir::Occurrence::Tuple(idx, sub_index),
+                                cases: vec![],
+                                default: Some(case_tree.into()),
+                            },
+                        };
+                    }
+
+                    (Some(hir::Condition::Tuple(elements.len())), target)
+                }
+            }
+        }
+
+        let cases = cases
+            .into_iter()
+            .enumerate()
+            .map(|(idx, Case { pattern, body })| go(Loc::Nowhere, idx, pattern, hir::CaseTree::Leaf(body.into())))
+            .collect::<Vec<_>>();
+
+        let mut default = None;
+        let mut relevant_cases = vec![];
+        for (condition, case_tree) in cases {
+            match condition {
+                Some(condition) => relevant_cases.push((condition, case_tree)),
+                None => {
+                    default = Some(Box::new(case_tree));
+                    break; // TODO: report irrelevance
+                }
+            }
+        }
+
+        hir::CaseTree::Branch {
+            occurence: hir::Occurrence::Term(Box::new(scrutinee)),
+            cases: relevant_cases,
+            default,
+        }
+    }
+
+    /// Infers the type of a pattern. It returns a [hir::Type] with the new type.
     pub fn infer_pat(env: &mut TypeEnv, ctx: Pats, pat: Pattern) -> hir::Type {
         match pat {
             PatternSrcPos(box pat, src_pos) => {
@@ -172,6 +358,7 @@ mod pat {
         }
     }
 
+    /// Checks pattern against expected type. It returns the expected type.
     pub fn check_pat(env: &mut TypeEnv, ctx: Pats, pat: Pattern, expected: hir::Type) -> hir::Type {
         match (pat, expected) {
             (PatternSrcPos(box pat, src_pos), expected) => {
@@ -222,25 +409,49 @@ mod pat {
             }
         }
     }
-}
 
-pub fn check(env: &TypeEnv, term: Term, expected: hir::Type) -> hir::Term {
-    match (term, expected) {
-        (Term::SrcPos(box term, src_pos), expected) => check(&TypeEnv { src_pos, ..env.clone() }, term, expected),
-        (Term::Fun(parameter, box body), hir::Type::Fun(box domain, box codomain)) => {
-            let env = env.extend(parameter.name.text.clone(), hir::Poly::new(domain.clone()));
-            let body = check(&env, body, codomain.clone());
+    #[cfg(test)]
+    mod tests {
+        use super::*;
 
-            hir::Term {
-                src_pos: env.src_pos.clone(),
-                type_repr: hir::Type::Fun(domain.into(), codomain.into()),
-                value: hir::TermKind::Fun(parameter, body.into()),
-            }
-        }
-        (term, expected) => {
-            let term = infer(env, term);
-            env.unify_catch(expected, term.type_repr.clone());
-            term
+        #[test]
+        fn test_specialize() {
+            let mut env = TypeEnv::default();
+            let cons = Definition::new("Cons");
+            let nil = Definition::new("Nil");
+
+            env.types.insert("int".into(), Definition::new("int"));
+            env.types.insert("list".into(), Definition::new("list"));
+
+            let scrutinee = infer(&env, Term::List(vec![]));
+            dbg!(specialize(scrutinee, vec![
+                Case {
+                    pattern: Constructor(
+                        cons.clone().use_reference(),
+                        Some(Box::new(Elements(vec![
+                            Constructor(
+                                cons.clone().use_reference(),
+                                Some(Box::new(Elements(vec![
+                                    Variable(Definition::new("x")),
+                                    Variable(Definition::new("xs")),
+                                ])))
+                            ),
+                            Constructor(
+                                cons.clone().use_reference(),
+                                Some(Box::new(Elements(vec![
+                                    Variable(Definition::new("x'")),
+                                    Variable(Definition::new("xs'")),
+                                ])))
+                            )
+                        ])))
+                    ),
+                    body: infer(&env, Term::Int(42))
+                },
+                Case {
+                    pattern: Constructor(nil.use_reference(), None),
+                    body: infer(&env, Term::Int(42))
+                }
+            ]));
         }
     }
 }
@@ -254,7 +465,7 @@ impl TypeEnv {
         self.types.get(name).unwrap().clone().use_reference()
     }
 
-    pub fn extend(&self, name: String, poly: hir::Poly) -> Self {
+    pub fn extend(&self, name: String, poly: hir::Scheme) -> Self {
         let mut new_type_env = self.clone();
         new_type_env.assumptions.insert(name, poly);
         new_type_env

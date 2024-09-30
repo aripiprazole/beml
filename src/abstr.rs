@@ -165,6 +165,15 @@ pub enum Pattern {
     Variable(Arc<Definition>),
 }
 
+impl Pattern {
+    pub fn unwrap(self) -> Pattern {
+        match self {
+            Pattern::PatternSrcPos(box pattern, _) => pattern.unwrap(),
+            pattern => pattern,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct File {
     pub path: PathBuf,
