@@ -8,12 +8,13 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+use typing::TypeEnv;
 pub use Body::*;
 pub use Decl::*;
 pub use Pattern::*;
 pub use Term::*;
 
-use crate::loc::Identifier;
+use crate::{hir, loc::Identifier};
 
 pub mod pprint;
 pub mod typing;
@@ -191,4 +192,27 @@ impl Definition {
         self.references.write().unwrap().push(reference.clone());
         reference
     }
+}
+
+/// Infer a file into a [hir::File]
+pub fn lower_file(file: File) -> miette::Result<hir::File> {
+    let mut env = TypeEnv::default();
+    let mut definitions = im::HashMap::new();
+    let defers = file
+        .declarations
+        .into_iter()
+        .map(|(name, decl)| (name, typing::decl::infer_decl(&mut env, decl)))
+        .collect::<Vec<_>>();
+
+    for (name, typing::decl::Defer(f)) in defers {
+        if let Some(value) = f(&mut env) {
+            definitions.insert(name.text, value);
+        }
+    }
+
+    Ok(hir::File {
+        path: file.path,
+        algebraic_data_types: env.types.into_iter().collect(),
+        definitions,
+    })
 }

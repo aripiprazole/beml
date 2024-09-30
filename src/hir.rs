@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
     hash::Hash,
+    path::PathBuf,
     sync::{Arc, RwLock},
 };
 
@@ -8,6 +9,32 @@ use crate::{
     abstr::{typing::TypeEnv, Definition, Reference},
     loc::Loc,
 };
+
+#[derive(Debug, Clone)]
+pub struct Constructor {
+    pub type_repr: Option<Type>,
+}
+
+#[derive(Debug, Clone)]
+pub struct AlgebraicDataType {
+    pub definition: Arc<Definition>,
+    pub arity: usize,
+    pub constructors: im_rc::HashMap<String, Constructor>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Value {
+    pub scheme: Scheme,
+    pub value: Term,
+}
+
+/// A file is a collection of definitions and algebraic data types.
+#[derive(Debug, Clone)]
+pub struct File {
+    pub path: PathBuf,
+    pub algebraic_data_types: im::HashMap<String, AlgebraicDataType>,
+    pub definitions: im::HashMap<String, Term>,
+}
 
 /// A term is a node in the HIR. It has a [TermKind] and a type. It holds
 /// the location and type information of the term.

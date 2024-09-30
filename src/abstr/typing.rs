@@ -9,26 +9,14 @@ use crate::{
 
 use super::*;
 
-#[derive(Debug, Clone)]
-struct Constructor {
-    type_repr: Option<hir::Type>,
-}
-
-#[derive(Debug, Clone)]
-struct AlgebraicDataType {
-    definition: Arc<Definition>,
-    arity: usize,
-    constructors: im_rc::HashMap<String, Constructor>,
-}
-
 #[derive(Clone, Default)]
 pub struct TypeEnv {
-    src_pos: Loc,
-    types: im_rc::HashMap<String, AlgebraicDataType>,
-    constructors_to_types: im_rc::HashMap<String, hir::Type>,
-    assumptions: im_rc::HashMap<String, hir::Scheme>,
-    errors: Rc<RefCell<Vec<miette::Report>>>,
-    counter: Rc<Cell<usize>>,
+    pub(crate) src_pos: Loc,
+    pub(crate) types: im_rc::HashMap<String, hir::AlgebraicDataType>,
+    pub(crate) constructors_to_types: im_rc::HashMap<String, hir::Type>,
+    pub(crate) assumptions: im_rc::HashMap<String, hir::Scheme>,
+    pub(crate) errors: Rc<RefCell<Vec<miette::Report>>>,
+    pub(crate) counter: Rc<Cell<usize>>,
 }
 
 /// Infers the type of a term. It returns a [crate::hir::Term] with the
@@ -183,17 +171,18 @@ pub fn check(env: &TypeEnv, term: Term, expected: hir::Type) -> hir::Term {
 
 /// Declaration inference, used for statement checking and declaration checking
 /// in let expressions.
-mod decl {
+pub(crate) mod decl {
     use super::*;
 
-    pub struct Defer(pub Box<dyn FnOnce(&mut TypeEnv)>);
+    #[allow(clippy::type_complexity)]
+    pub struct Defer(pub Box<dyn FnOnce(&mut TypeEnv) -> Option<hir::Term>>);
 
-    fn infer_decl(env: &mut TypeEnv, decl: Decl) -> Defer {
+    pub fn infer_decl(env: &mut TypeEnv, decl: Decl) -> Defer {
         match decl {
             Decl::TypeDecl(decl) => {
                 env.src_pos = decl.loc.clone();
 
-                Defer(Box::new(|_| {}))
+                Defer(Box::new(|_| None))
             }
             Decl::LetDecl(decl) => {
                 env.src_pos = decl.loc.clone();
@@ -201,7 +190,7 @@ mod decl {
                 let Body::Value(term) = decl.body else {
                     let scheme = tt.generalize();
                     env.assumptions.insert(decl.def.name.text.clone(), scheme);
-                    return Defer(Box::new(|_| {}));
+                    return Defer(Box::new(|_| None));
                 };
                 let h = env.fresh_type_variable();
                 env.unify_catch(tt.clone(), h.clone());
@@ -212,6 +201,7 @@ mod decl {
                     let value = infer(env, term);
                     env.unify_catch(h.clone(), value.type_repr.clone());
                     env.assumptions.insert(decl.def.name.text.clone(), Scheme::new(h));
+                    Some(value)
                 }))
             }
         }
@@ -220,7 +210,7 @@ mod decl {
 
 /// Pattern inference, used for coverage checking and pattern checking
 /// in match expressions.
-mod pat {
+pub(crate) mod pat {
     use hir::{IncompatiblePatternTypeError, UnresolvedConstructorError};
 
     use super::*;
@@ -410,11 +400,11 @@ mod pat {
                 check_pat(env, ctx, pat, expected)
             }
             (Constructor(constructor, None), hir::Type::Constructor(type_repr)) => {
-                let Some(AlgebraicDataType { constructors, .. }) = env.types.get(&type_repr.name.text) else {
+                let Some(hir::AlgebraicDataType { constructors, .. }) = env.types.get(&type_repr.name.text) else {
                     env.report(IncompatiblePatternTypeError);
                     return hir::Type::Constructor(type_repr);
                 };
-                let Some(Constructor { type_repr: None, .. }) = constructors.get(&constructor.name.text) else {
+                let Some(hir::Constructor { type_repr: None, .. }) = constructors.get(&constructor.name.text) else {
                     env.report(UnresolvedConstructorError);
                     return hir::Type::Constructor(type_repr);
                 };
@@ -422,14 +412,14 @@ mod pat {
                 hir::Type::Constructor(type_repr)
             }
             (Constructor(constructor, Some(box pat)), hir::Type::Constructor(type_repr)) => {
-                let Some(AlgebraicDataType { constructors, .. }) = env.types.get(&type_repr.name.text) else {
+                let Some(hir::AlgebraicDataType { constructors, .. }) = env.types.get(&type_repr.name.text) else {
                     env.report(IncompatiblePatternTypeError);
                     return hir::Type::Constructor(type_repr);
                 };
-                let Some(Constructor {
+                let Some(hir::Constructor {
                     type_repr: Some(expected),
                     ..
-                }) = adt.get(&constructor.name.text)
+                }) = constructors.get(&constructor.name.text)
                 else {
                     env.report(UnresolvedConstructorError);
                     return hir::Type::Constructor(type_repr);
@@ -464,12 +454,12 @@ mod pat {
             let cons = Definition::new("Cons");
             let nil = Definition::new("Nil");
 
-            env.types.insert("int".into(), AlgebraicDataType {
+            env.types.insert("int".into(), hir::AlgebraicDataType {
                 definition: Definition::new("int"),
                 arity: 0,
                 constructors: Default::default(),
             });
-            env.types.insert("list".into(), AlgebraicDataType {
+            env.types.insert("list".into(), hir::AlgebraicDataType {
                 definition: Definition::new("list"),
                 arity: 0,
                 constructors: Default::default(),

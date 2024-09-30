@@ -11,8 +11,9 @@ pub mod grammar;
 
 use errors::*;
 use logos::Logos;
-use miette::NamedSource;
+use miette::{IntoDiagnostic, NamedSource};
 
+/// Transforms the tokens into a concrete syntax tree.
 pub struct Parser<'a> {
     file: PathBuf,
     lexer: logos::Lexer<'a, crate::lexer::Token>,
@@ -24,7 +25,14 @@ pub struct Parser<'a> {
     gas: Cell<usize>,
 }
 
+/// Create a new parser.
+pub fn parse_file(file: PathBuf) -> miette::Result<File> {
+    let text = std::fs::read_to_string(&file).into_diagnostic()?;
+    Parser::parse(file, text.as_str())
+}
+
 impl<'a> Parser<'a> {
+    /// Parse a file with a text.
     pub fn parse(file: PathBuf, text: &str) -> miette::Result<File> {
         let mut p = Parser {
             file,
