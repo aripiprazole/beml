@@ -156,8 +156,11 @@ pub fn lower_type(mut ctx: LoweringCtx, term: Term) -> miette::Result<abstr::Typ
         Meta(name) => Ok(abstr::Type::Meta(name)),
         App(box argument, box callee) => {
             let argument = lower_type(ctx.clone(), argument)?;
-            let abstr::Type::Constructor(callee) = lower_type(ctx.clone(), callee)? else {
-                ctx.wrap_error(TypeCalleeIsNotAConstructorError)?
+            let callee = match lower_type(ctx.clone(), callee)? {
+                abstr::Type::SrcPos(box abstr::Type::Constructor(callee), _) | abstr::Type::Constructor(callee) => {
+                    callee
+                }
+                _ => ctx.wrap_error(TypeCalleeIsNotAConstructorError)?,
             };
             if callee.name.text == "local" {
                 return Ok(abstr::Type::Local(argument.into()));
