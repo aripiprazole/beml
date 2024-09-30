@@ -182,6 +182,11 @@ impl LoweringCtx {
                     .collect::<Vec<_>>();
                 Ok(abstr::Type::Pair(elements))
             }
+            BinOp(box domain, BinOp::Arrow, box codomain) => {
+                let domain = self.clone().parse_type(domain)?;
+                let codomain = self.clone().parse_type(codomain)?;
+                Ok(abstr::Type::Fun(domain.into(), codomain.into()))
+            }
             Var(name) => self
                 .lookup_type(name)
                 .map(|definition| abstr::Type::Constructor(definition.use_reference()))

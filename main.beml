@@ -2,6 +2,8 @@ type 'a list =
   | Nil
   | Cons of 'a * 'a list
 
+val (+) : int -> int -> int
+
 let map f = function
   | Nil => Nil
   | Cons (x, xs) => Cons (f x, map f xs)
