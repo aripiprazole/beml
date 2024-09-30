@@ -125,8 +125,7 @@ pub fn lower_file(file: File) -> miette::Result<abstr::File> {
         .map(|decl| rules::decl::lower_decl(&mut ctx, decl))
         .collect::<miette::Result<Vec<_>>>()?;
     for rules::decl::Defer(f) in terms {
-        let mut local = ctx.clone();
-        let decl = f(&mut local)?;
+        let decl = f(&mut ctx)?;
 
         declarations.insert(decl.name().name.clone(), decl);
     }

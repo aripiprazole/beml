@@ -157,20 +157,20 @@ impl LoweringCtx {
 
     pub fn sep_by(&mut self, desired: BinOp, mut acc: Term) -> miette::Result<Vec<Term>> {
         self.burn();
-
         let mut terms = vec![];
-        if let SrcPos(box term, _) = acc {
-            acc = term;
-        }
 
-        while let BinOp(box lhs, op, box rhs) = acc {
-            if desired == op {
-                terms.push(lhs);
-                acc = rhs;
-            } else {
-                break;
+        loop {
+            match acc {
+                SrcPos(box BinOp(box lhs, op, box rhs), _) | BinOp(box lhs, op, box rhs) if desired == op => {
+                    let lhs = self.sep_by(desired.clone(), lhs)?;
+                    terms.extend(lhs);
+                    acc = rhs;
+                }
+                _ => break,
             }
         }
+
+        terms.push(acc);
 
         Ok(terms)
     }

@@ -226,7 +226,7 @@ pub mod pat {
                 ctx.src_pos = loc.clone();
                 Ok(abstr::PatternSrcPos(lower_pattern(ctx, term)?.into(), loc))
             }
-            Var(name) if name.text.chars().collect::<Vec<_>>().first().unwrap().is_uppercase() => {
+            Var(name) if name.text.chars().next().unwrap().is_uppercase() => {
                 Ok(match ctx.lookup_constructor(name.clone()) {
                     Ok(def) => abstr::Constructor(def.use_reference(), None),
                     Err(error) => {
@@ -283,7 +283,7 @@ pub mod pat {
                 let body = lower_term(ctx, body)?;
                 Ok(abstr::Case { pattern, body })
             }
-            _ => Err(UnexpectedCaseSyntaxError).into_diagnostic(),
+            _ => ctx.wrap_error(UnexpectedCaseSyntaxError),
         }
     }
 
@@ -441,7 +441,7 @@ pub mod decl {
                 let name = ctx.new_constructor(name);
                 Ok(abstr::Constructor { name, type_repr: None })
             }
-            _ => Err(ConstructorSyntaxError).into_diagnostic(),
+            _ => ctx.wrap_error(ConstructorSyntaxError),
         }
     }
 }
