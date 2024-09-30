@@ -422,7 +422,10 @@ pub mod decl {
     pub fn lower_constructors(ctx: &mut LoweringCtx, constructors: Vec<Term>) -> Vec<abstr::Constructor> {
         constructors
             .into_iter()
-            .filter_map(|term| ctx.or_none(lower_constructor(&mut ctx.clone(), term)))
+            .filter_map(|term| {
+                let constructor = lower_constructor(ctx, term);
+                ctx.or_none(constructor)
+            })
             .collect()
     }
 
