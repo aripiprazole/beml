@@ -1,6 +1,9 @@
 use super::*;
 
-use crate::loc::Identifier;
+use crate::{
+    errors::{CompilerPass, JoinErrors},
+    loc::Identifier,
+};
 
 use std::{
     cell::{Cell, RefCell},
@@ -127,11 +130,18 @@ pub fn lower_file(file: File) -> miette::Result<abstr::File> {
         declarations.insert(decl.name().name.clone(), decl);
     }
 
-    Ok(abstr::File {
-        path: file.path,
-        shebang: file.shebang,
-        declarations,
-    })
+    if ctx.errors.borrow().is_empty() {
+        Ok(abstr::File {
+            path: file.path,
+            shebang: file.shebang,
+            declarations,
+        })
+    } else {
+        Err(JoinErrors {
+            compiler_pass: CompilerPass::Lowering,
+            errors: unsafe { std::mem::transmute_copy(&ctx.errors.borrow()) },
+        })?
+    }
 }
 
 #[cfg(test)]

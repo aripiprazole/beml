@@ -17,10 +17,10 @@ pub struct LoweringCtx {
     variables: HashMap<String, Arc<abstr::Definition>>,
     constructors: HashMap<String, Arc<abstr::Definition>>,
     types: HashMap<String, Arc<abstr::Definition>>,
-    errors: Rc<RefCell<Vec<miette::Report>>>,
     counter: Rc<Cell<usize>>,
     #[cfg(debug_assertions)]
     gas: Rc<Cell<usize>>,
+    pub(crate) errors: Rc<RefCell<Vec<miette::Report>>>,
 }
 
 impl LoweringCtx {

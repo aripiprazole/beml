@@ -2,6 +2,7 @@ use std::{cell::Cell, path::PathBuf};
 
 use crate::{
     concr::{File, Term},
+    errors::{CompilerPass, JoinErrors},
     lexer::Token,
     loc::Loc,
 };
@@ -44,18 +45,26 @@ impl<'a> Parser<'a> {
             gas: Cell::new(0),
         };
 
+        // eat the first and bump into current token
         p.bump();
         while !p.eof() {
             let decl = recover!(&mut p, grammar::decl(&mut p));
             p.terms.push(decl);
         }
 
-        Ok(File {
-            terms: p.terms,
-            path: p.file,
-            shebang: None,
-            text: text.into(),
-        })
+        if p.errors.is_empty() {
+            Ok(File {
+                terms: p.terms,
+                path: p.file,
+                shebang: None,
+                text: text.into(),
+            })
+        } else {
+            Err(JoinErrors {
+                compiler_pass: CompilerPass::Parsing,
+                errors: p.errors,
+            })?
+        }
     }
 
     pub fn report(&mut self, error: miette::Report) {

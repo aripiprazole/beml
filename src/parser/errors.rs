@@ -5,7 +5,7 @@ use super::*;
 pub struct Eof;
 
 #[derive(Debug, thiserror::Error, miette::Diagnostic)]
-#[error("unexpected token: {actual}, possibilities: {}", possibilities.iter().map(|t| format!("{t}")).collect::<Vec<_>>().join(", "))]
+#[error("unexpected token: `{actual}`, possibilities: {}", possibilities.iter().map(|t| format!("`{t}`")).collect::<Vec<_>>().join(", "))]
 pub struct UnexpectedToken {
     pub actual: Token,
     pub possibilities: Vec<Token>,

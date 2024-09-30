@@ -1,9 +1,11 @@
 #![feature(box_patterns)]
 #![feature(new_range_api)]
+#![feature(mem_copy_fn)]
 
 pub mod abstr;
 pub mod aux;
 pub mod concr;
+pub mod errors;
 pub mod hir;
 pub mod lexer;
 pub mod loc;

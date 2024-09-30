@@ -1,9 +1,13 @@
 use miette::{SourceOffset, SourceSpan};
 
+/// Location in the source code. It is a range in the source code.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub enum Loc {
+    /// Synthesized location.
     #[default]
     Nowhere,
+
+    /// Actual location in the source code.
     Loc {
         startpos: usize,
         endpos: usize,
@@ -11,6 +15,7 @@ pub enum Loc {
     },
 }
 
+/// Transformation into miette's [SourceSpan].
 impl From<Loc> for SourceSpan {
     fn from(value: Loc) -> Self {
         match value {
@@ -23,12 +28,14 @@ impl From<Loc> for SourceSpan {
     }
 }
 
+/// Identifier in the source code.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Identifier {
     pub text: String,
     pub loc: Loc,
 }
 
+/// String data in the source code.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Text {
     pub value: String,

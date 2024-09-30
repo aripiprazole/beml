@@ -1,6 +1,6 @@
 type 'a list =
   | Nil
-  | Cons of 'a * 'a list
+  | Cons of 'a * ('a list)
 
 val (+) : int -> int -> int
 
