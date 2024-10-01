@@ -1,3 +1,9 @@
+use std::fmt::Display;
+
+use miette::NamedSource;
+
+use crate::loc::Loc;
+
 /// Error that can occur during the compilation process. It composes all errors of that
 /// compilation process.
 #[derive(Debug, miette::Diagnostic, thiserror::Error)]
@@ -7,6 +13,21 @@ pub struct StepFailedError {
 
     #[related]
     pub errors: Vec<miette::Report>,
+}
+
+/// Error that can occur during the compilation process. It composes all errors of that
+/// compilation process.
+#[derive(Debug, thiserror::Error, miette::Diagnostic)]
+#[error("{source}")]
+pub struct LoweringError<E: miette::Diagnostic + Display + std::error::Error + Send + Sync + 'static> {
+    #[label("here")]
+    pub loc: Loc,
+
+    #[source_code]
+    pub source_code: NamedSource,
+
+    #[source]
+    pub source: E,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

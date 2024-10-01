@@ -3,14 +3,14 @@ use std::sync::Arc;
 use miette::NamedSource;
 
 use super::*;
-use crate::concr::errors::*;
+use crate::{concr::errors::*, errors::LoweringError};
 
 #[derive(Clone)]
 pub struct LoweringCtx {
     pub(crate) src_pos: crate::loc::Loc,
     pub(crate) errors: Rc<RefCell<Vec<miette::Report>>>,
+    pub(crate) text: String,
     file: PathBuf,
-    text: String,
     variables: HashMap<String, Arc<abstr::Definition>>,
     constructors: HashMap<String, Arc<abstr::Definition>>,
     types: HashMap<String, Arc<abstr::Definition>>,

@@ -1,9 +1,3 @@
-use std::fmt::Display;
-
-use miette::NamedSource;
-
-use super::loc::Loc;
-
 // can't find the constructor
 #[derive(Debug, thiserror::Error, miette::Diagnostic)]
 #[error("can't find the constructor: {name}")]
@@ -99,17 +93,4 @@ pub enum UnresolvedSymbolError {
 
     #[error("{0}")]
     UnresolvedVariableError(UnresolvedVariableError),
-}
-
-#[derive(Debug, thiserror::Error, miette::Diagnostic)]
-#[error("{source}")]
-pub struct LoweringError<E: miette::Diagnostic + Display + std::error::Error + Send + Sync + 'static> {
-    #[label("here")]
-    pub loc: Loc,
-
-    #[source_code]
-    pub source_code: NamedSource,
-
-    #[source]
-    pub source: E,
 }

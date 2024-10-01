@@ -185,6 +185,7 @@ pub struct File {
     pub path: PathBuf,
     pub shebang: Option<String>,
     pub declarations: HashMap<Identifier, Decl, FxBuildHasher>,
+    pub text: String,
 }
 
 impl Definition {
@@ -201,7 +202,7 @@ impl Definition {
 
 /// Infer a file into a [hir::File]
 pub fn lower_file(file: File) -> miette::Result<hir::File> {
-    let mut env = TypeEnv::default();
+    let mut env = TypeEnv::new(file.path.clone(), file.text.clone());
     let mut definitions = im::HashMap::default();
     let defers = file
         .declarations

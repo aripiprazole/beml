@@ -135,6 +135,7 @@ pub fn lower_file(file: File) -> miette::Result<abstr::File> {
             path: file.path,
             shebang: file.shebang,
             declarations,
+            text: ctx.text,
         })
     } else {
         Err(StepFailedError {

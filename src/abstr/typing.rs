@@ -1,9 +1,10 @@
 use std::cell::Cell;
 
 use fxhash::FxBuildHasher;
-use miette::IntoDiagnostic;
+use miette::{IntoDiagnostic, NamedSource};
 
 use crate::{
+    errors::LoweringError,
     hir::{self, Scheme, Typeable},
     loc::Loc,
 };
@@ -18,6 +19,8 @@ pub struct UnresolvedVariableError {
 
 #[derive(Clone)]
 pub struct TypeEnv {
+    pub(crate) file: PathBuf,
+    pub(crate) text: String,
     pub(crate) src_pos: Loc,
     pub(crate) types: im_rc::HashMap<String, hir::AlgebraicDataType, FxBuildHasher>,
     pub(crate) constructors_to_types: im_rc::HashMap<String, hir::Scheme, FxBuildHasher>,
@@ -559,7 +562,7 @@ pub(crate) mod pat {
 
         #[test]
         fn test_specialize() {
-            let mut env = TypeEnv::default();
+            let mut env = TypeEnv::new(Default::default(), Default::default());
             let cons = Definition::new("Cons");
             let nil = Definition::new("Nil");
 
@@ -608,6 +611,35 @@ pub(crate) mod pat {
 }
 
 impl TypeEnv {
+    pub fn new(file: PathBuf, text: String) -> Self {
+        let mut types = im_rc::HashMap::default();
+        types.insert("int".into(), hir::AlgebraicDataType {
+            definition: Definition::new("int"),
+            arity: 0,
+            constructors: Default::default(),
+        });
+        types.insert("string".into(), hir::AlgebraicDataType {
+            definition: Definition::new("string"),
+            arity: 0,
+            constructors: Default::default(),
+        });
+        types.insert("bool".into(), hir::AlgebraicDataType {
+            definition: Definition::new("bool"),
+            arity: 0,
+            constructors: Default::default(),
+        });
+        Self {
+            file,
+            text,
+            src_pos: Loc::Nowhere,
+            types,
+            constructors_to_types: Default::default(),
+            assumptions: Default::default(),
+            errors: Rc::new(RefCell::new(vec![])),
+            counter: Rc::new(Cell::new(0)),
+        }
+    }
+
     pub fn fresh_type_variable(&self) -> hir::Type {
         let idx = self.counter.get();
         self.counter.set(idx + 1);
@@ -634,7 +666,7 @@ impl TypeEnv {
     }
 
     pub fn report(&self, error: impl miette::Diagnostic + Send + Sync + 'static) {
-        self.report_direct_error(Err::<(), _>(error).into_diagnostic().unwrap_err());
+        self.report_direct_error(self.wrap_error::<(), _>(error).unwrap_err());
     }
 
     pub fn unify_catch<A: Typeable, B: Typeable>(&self, lhs: &A, rhs: &B) {
@@ -642,33 +674,15 @@ impl TypeEnv {
             self.report_direct_error(err);
         }
     }
-}
 
-impl Default for TypeEnv {
-    fn default() -> Self {
-        let mut types = im_rc::HashMap::default();
-        types.insert("int".into(), hir::AlgebraicDataType {
-            definition: Definition::new("int"),
-            arity: 0,
-            constructors: Default::default(),
-        });
-        types.insert("string".into(), hir::AlgebraicDataType {
-            definition: Definition::new("string"),
-            arity: 0,
-            constructors: Default::default(),
-        });
-        types.insert("bool".into(), hir::AlgebraicDataType {
-            definition: Definition::new("bool"),
-            arity: 0,
-            constructors: Default::default(),
-        });
-        Self {
-            src_pos: Loc::Nowhere,
-            types,
-            constructors_to_types: Default::default(),
-            assumptions: Default::default(),
-            errors: Rc::new(RefCell::new(vec![])),
-            counter: Rc::new(Cell::new(0)),
-        }
+    /// Wraps the error with the source code and location
+    pub fn wrap_error<A, T>(&self, source: T) -> miette::Result<A>
+    where
+        T: miette::Diagnostic + std::error::Error + Send + Sync + 'static, {
+        Err(LoweringError {
+            loc: self.src_pos.clone(),
+            source_code: NamedSource::new(self.file.to_str().unwrap(), self.text.clone()),
+            source,
+        })?
     }
 }
