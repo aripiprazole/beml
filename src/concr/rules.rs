@@ -361,24 +361,27 @@ pub mod decl {
                         body = abstr::Fun(name, new_body.into());
                     }
 
-                    if let abstr::Variable(variable) = pattern {
-                        Ok(abstr::Decl::LetDecl(abstr::LetDecl {
-                            def: variable,
-                            type_repr: fun_type,
-                            body: abstr::Value(body),
-                            loc: src_pos,
-                        }))
-                    } else {
-                        let new_var = ctx.new_fresh_variable();
-                        Ok(abstr::Decl::LetDecl(abstr::LetDecl {
-                            def: ctx.new_fresh_variable(),
-                            type_repr: fun_type,
-                            body: abstr::Value(abstr::Match(body.into(), vec![abstr::Case {
-                                pattern,
-                                body: abstr::Var(ctx.use_reference(new_var)),
-                            }])),
-                            loc: src_pos,
-                        }))
+                    match pattern {
+                        abstr::Variable(variable) | abstr::PatternSrcPos(box abstr::Variable(variable), _) => {
+                            Ok(abstr::Decl::LetDecl(abstr::LetDecl {
+                                def: variable,
+                                type_repr: fun_type,
+                                body: abstr::Value(body),
+                                loc: src_pos,
+                            }))
+                        }
+                        _ => {
+                            let new_var = ctx.new_fresh_variable();
+                            Ok(abstr::Decl::LetDecl(abstr::LetDecl {
+                                def: ctx.new_fresh_variable(),
+                                type_repr: fun_type,
+                                body: abstr::Value(abstr::Match(body.into(), vec![abstr::Case {
+                                    pattern,
+                                    body: abstr::Var(ctx.use_reference(new_var)),
+                                }])),
+                                loc: src_pos,
+                            }))
+                        }
                     }
                 }))
             }

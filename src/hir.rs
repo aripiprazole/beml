@@ -268,6 +268,16 @@ impl Scheme {
         }
         go(&holes, self.mono.clone())
     }
+
+    pub fn apply(&self, pat: Type, env: &TypeEnv) -> Type {
+        match self.instantiate(env) {
+            Type::App(reference, box argument) => {
+                env.unify_catch(&pat, &argument);
+                Type::App(reference, pat.into())
+            }
+            t => t,
+        }
+    }
 }
 
 impl Type {

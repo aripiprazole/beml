@@ -1,7 +1,7 @@
 use std::cell::Cell;
 
 use fxhash::FxBuildHasher;
-use miette::{IntoDiagnostic, NamedSource};
+use miette::NamedSource;
 
 use crate::{
     errors::LoweringError,
@@ -268,6 +268,7 @@ pub(crate) mod decl {
                     env.assumptions.insert(decl.def.name.text.clone(), scheme);
                     return Defer(Box::new(|_| None));
                 };
+
                 let h = env.fresh_type_variable();
                 env.unify_catch(&h, &tt);
                 env.assumptions
@@ -462,15 +463,7 @@ pub(crate) mod pat {
                     return hir::Type::Any;
                 };
 
-                // BIG GAMBIARRA HERE ATTENTION: we need pi types ...
-                match hir_type.instantiate(env) {
-                    hir::Type::App(reference, box argument) => {
-                        let argument_type = infer_pat(env, ctx, pat);
-                        env.unify_catch(&argument_type, &argument);
-                        hir::Type::App(reference, argument_type.into())
-                    }
-                    t => t,
-                }
+                hir_type.apply(infer_pat(env, ctx, pat), env)
             }
             Constructor(ref constructor, None) => {
                 let Some(hir_type) = env.constructors_to_types.get(&constructor.name.text).cloned() else {
@@ -670,8 +663,8 @@ impl TypeEnv {
     }
 
     pub fn unify_catch<A: Typeable, B: Typeable>(&self, lhs: &A, rhs: &B) {
-        if let Err(err) = lhs.type_of().unify(rhs.type_of()).into_diagnostic() {
-            self.report_direct_error(err);
+        if let Err(err) = lhs.type_of().unify(rhs.type_of()) {
+            self.report(err);
         }
     }
 
