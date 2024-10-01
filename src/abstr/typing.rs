@@ -14,7 +14,7 @@ use super::*;
 pub struct TypeEnv {
     pub(crate) src_pos: Loc,
     pub(crate) types: im_rc::HashMap<String, hir::AlgebraicDataType, FxBuildHasher>,
-    pub(crate) constructors_to_types: im_rc::HashMap<String, hir::Type, FxBuildHasher>,
+    pub(crate) constructors_to_types: im_rc::HashMap<String, hir::Scheme, FxBuildHasher>,
     pub(crate) assumptions: im_rc::HashMap<String, hir::Scheme, FxBuildHasher>,
     pub(crate) errors: Rc<RefCell<Vec<miette::Report>>>,
     pub(crate) counter: Rc<Cell<usize>>,
@@ -214,7 +214,7 @@ pub(crate) mod decl {
 
                     for Constructor { name: def, type_repr } in decl.cases {
                         env.constructors_to_types
-                            .insert(def.name.text.clone(), target_type.clone());
+                            .insert(def.name.text.clone(), target_type.clone().generalize());
                         match type_repr {
                             Some(type_repr) => {
                                 let type_repr = hir::Type::new(type_repr, env);
@@ -439,12 +439,28 @@ pub(crate) mod pat {
                 env.assumptions.insert(var.name.text.clone(), Scheme::new(tt.clone()));
                 tt
             }
-            Constructor(ref constructor, _) => {
+            Constructor(ref constructor, Some(box pat)) => {
                 let Some(hir_type) = env.constructors_to_types.get(&constructor.name.text).cloned() else {
                     env.report(IncompatiblePatternTypeError);
                     return hir::Type::Any;
                 };
-                hir_type
+
+                // BIG GAMBIARRA HERE ATTENTION: we need pi types ...
+                match hir_type.instantiate(env) {
+                    hir::Type::App(reference, box argument) => {
+                        let argument_type = infer_pat(env, ctx, pat);
+                        env.unify_catch(&argument_type, &argument);
+                        hir::Type::App(reference, argument_type.into())
+                    }
+                    t => t,
+                }
+            }
+            Constructor(ref constructor, None) => {
+                let Some(hir_type) = env.constructors_to_types.get(&constructor.name.text).cloned() else {
+                    env.report(IncompatiblePatternTypeError);
+                    return hir::Type::Any;
+                };
+                hir_type.instantiate(env)
             }
             Elements(elements) => hir::Type::Pair(
                 elements
@@ -468,6 +484,7 @@ pub(crate) mod pat {
                     return hir::Type::Any;
                 };
 
+                let hir_type = hir_type.instantiate(env);
                 let new_type_repr = check_pat(env, ctx, Constructor(constructor, argument), hir_type);
                 type_repr.update(new_type_repr.clone());
                 new_type_repr
