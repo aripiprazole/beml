@@ -248,6 +248,7 @@ pub(crate) mod decl {
                     env.assumptions.insert(decl.def.name.text.clone(), scheme);
                     return Defer(Box::new(|_| None));
                 };
+                println!("{:?}", term.pretty_print());
                 let h = env.fresh_type_variable();
                 env.unify_catch(&h, &tt);
                 env.assumptions
