@@ -248,7 +248,6 @@ pub(crate) mod decl {
                     env.assumptions.insert(decl.def.name.text.clone(), scheme);
                     return Defer(Box::new(|_| None));
                 };
-                println!("{:?}", term.pretty_print());
                 let h = env.fresh_type_variable();
                 env.unify_catch(&h, &tt);
                 env.assumptions
@@ -429,10 +428,14 @@ pub(crate) mod pat {
                 env.src_pos = src_pos;
                 infer_pat(env, ctx, pat)
             }
-            Variable(var) => ctx
-                .entry(var.name.text.clone())
-                .or_insert_with(|| env.fresh_type_variable())
-                .clone(),
+            Variable(var) => {
+                let tt = ctx
+                    .entry(var.name.text.clone())
+                    .or_insert_with(|| env.fresh_type_variable())
+                    .clone();
+                env.assumptions.insert(var.name.text.clone(), Scheme::new(tt.clone()));
+                tt
+            }
             Constructor(ref constructor, _) => {
                 let Some(hir_type) = env.constructors_to_types.get(&constructor.name.text).cloned() else {
                     env.report(IncompatiblePatternTypeError);
@@ -492,6 +495,15 @@ pub(crate) mod pat {
                     .collect::<Vec<_>>();
 
                 hir::Type::Pair(elements)
+            }
+            (Variable(var), expected) => {
+                let tt = ctx
+                    .entry(var.name.text.clone())
+                    .or_insert_with(|| env.fresh_type_variable())
+                    .clone();
+                env.assumptions.insert(var.name.text.clone(), Scheme::new(tt.clone()));
+                env.unify_catch(&expected, &tt);
+                expected
             }
             (term, expected) => {
                 let inferred = infer_pat(env, ctx, term);
