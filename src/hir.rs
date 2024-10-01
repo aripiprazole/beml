@@ -292,9 +292,8 @@ impl Type {
         go(&mut HashMap::new(), env, abstr)
     }
 
-    #[allow(clippy::mutable_key_type)]
     pub fn generalize(self) -> Scheme {
-        fn go(vars: &mut HashMap<Type, usize>, value: Type) -> Type {
+        fn go(vars: &mut HashMap<usize, usize>, value: Type) -> Type {
             use Type::*;
 
             match value {
@@ -304,7 +303,10 @@ impl Type {
                 Fun(box domain, box codomain) => Type::Fun(go(vars, domain).into(), go(vars, codomain).into()),
                 App(name, box argument) => Type::App(name, go(vars, argument).into()),
                 Local(box local) => Type::Local(go(vars, local).into()),
-                Hole(Variable(idx, _)) => Type::Meta(*vars.entry(value).or_insert_with(|| idx)),
+                Hole(Variable(idx, _)) => {
+                    let len = vars.len();
+                    Type::Meta(*vars.entry(idx).or_insert_with(|| len))
+                }
                 Constructor(constructor) => Type::Constructor(constructor),
                 Meta(m) => Type::Meta(m),
             }
