@@ -15,7 +15,11 @@ pub use Decl::*;
 pub use Pattern::*;
 pub use Term::*;
 
-use crate::{hir, loc::Identifier};
+use crate::{
+    errors::{CompilerPass, StepFailedError},
+    hir,
+    loc::Identifier,
+};
 
 pub mod pprint;
 pub mod typing;
@@ -211,9 +215,19 @@ pub fn lower_file(file: File) -> miette::Result<hir::File> {
         }
     }
 
-    Ok(hir::File {
-        path: file.path,
-        algebraic_data_types: env.types.into_iter().collect(),
-        definitions,
-    })
+    if env.errors.borrow().is_empty() {
+        Ok(hir::File {
+            path: file.path,
+            algebraic_data_types: env.types.into_iter().collect(),
+            definitions,
+        })
+    } else {
+        Err(StepFailedError {
+            compiler_pass: CompilerPass::TypeChecking,
+
+            // this is safe, because we never use the `ctx.errors` after the call to `lower_file`
+            // and we never use the `ctx` after the call to `lower_file`
+            errors: unsafe { std::mem::take(&mut *env.errors.as_ptr()) },
+        })?
+    }
 }

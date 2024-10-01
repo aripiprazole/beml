@@ -10,7 +10,13 @@ use crate::{
 
 use super::*;
 
-#[derive(Clone, Default)]
+#[derive(Debug, thiserror::Error, miette::Diagnostic)]
+#[error("unresolved variable: {name}")]
+pub struct UnresolvedVariableError {
+    pub name: String,
+}
+
+#[derive(Clone)]
 pub struct TypeEnv {
     pub(crate) src_pos: Loc,
     pub(crate) types: im_rc::HashMap<String, hir::AlgebraicDataType, FxBuildHasher>,
@@ -107,7 +113,15 @@ pub fn infer(env: &TypeEnv, term: Term) -> hir::Term {
                 src_pos: env.src_pos.clone(),
                 value: hir::TermKind::Var(var),
             },
-            None => panic!("couldn't find term {}", var.name.text),
+            None => {
+                env.report(UnresolvedVariableError { name: var.name.text });
+
+                hir::Term {
+                    type_repr: hir::Type::Any,
+                    src_pos: env.src_pos.clone(),
+                    value: hir::TermKind::Error,
+                }
+            }
         },
         Int(i) => hir::Term {
             type_repr: hir::Type::Constructor(env.get_type("int")),
@@ -601,7 +615,12 @@ impl TypeEnv {
     }
 
     pub fn get_type(&self, name: &str) -> Reference {
-        self.types.get(name).unwrap().clone().definition.use_reference()
+        self.types
+            .get(name)
+            .unwrap_or_else(|| panic!("intrinsic type {name} not found"))
+            .clone()
+            .definition
+            .use_reference()
     }
 
     pub fn extend(&self, name: String, poly: hir::Scheme) -> Self {
@@ -621,6 +640,35 @@ impl TypeEnv {
     pub fn unify_catch<A: Typeable, B: Typeable>(&self, lhs: &A, rhs: &B) {
         if let Err(err) = lhs.type_of().unify(rhs.type_of()).into_diagnostic() {
             self.report_direct_error(err);
+        }
+    }
+}
+
+impl Default for TypeEnv {
+    fn default() -> Self {
+        let mut types = im_rc::HashMap::default();
+        types.insert("int".into(), hir::AlgebraicDataType {
+            definition: Definition::new("int"),
+            arity: 0,
+            constructors: Default::default(),
+        });
+        types.insert("string".into(), hir::AlgebraicDataType {
+            definition: Definition::new("string"),
+            arity: 0,
+            constructors: Default::default(),
+        });
+        types.insert("bool".into(), hir::AlgebraicDataType {
+            definition: Definition::new("bool"),
+            arity: 0,
+            constructors: Default::default(),
+        });
+        Self {
+            src_pos: Loc::Nowhere,
+            types,
+            constructors_to_types: Default::default(),
+            assumptions: Default::default(),
+            errors: Rc::new(RefCell::new(vec![])),
+            counter: Rc::new(Cell::new(0)),
         }
     }
 }

@@ -43,6 +43,7 @@ impl Typeable for Term {
 /// in the HIR.
 #[derive(Debug, Clone)]
 pub enum TermKind {
+    Error,
     List(Vec<Term>),                            // [1, 2, 3, 4, 5...]
     Pair(Vec<Term>),                            // (1, 2, 3, 4, 5...)
     Fun(Arc<Definition>, Box<Term>),            // fun x -> x + 1
