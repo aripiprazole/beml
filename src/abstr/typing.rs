@@ -57,11 +57,12 @@ pub fn infer(env: &TypeEnv, term: Term) -> hir::Term {
         }
         Fun(parameter, box body) => {
             let h = env.fresh_type_variable();
-            let fun_env = env.extend(parameter.name.text.clone(), Scheme::new(h));
+            let fun_env = env.extend(parameter.name.text.clone(), Scheme::new(h.clone()));
             let body = infer(&fun_env, body);
+            let type_repr = hir::Type::Fun(h.into(), body.type_repr.clone().into());
 
             hir::Term {
-                type_repr: body.type_repr.clone(),
+                type_repr,
                 src_pos: env.src_pos.clone(),
                 value: hir::TermKind::Fun(parameter, body.into()),
             }
@@ -151,7 +152,7 @@ pub fn infer(env: &TypeEnv, term: Term) -> hir::Term {
 /// It also checks that the type is compatible with the expected type, and reports errors
 /// if it is not.
 pub fn check(env: &TypeEnv, term: Term, expected: hir::Type) -> hir::Term {
-    match (term, expected) {
+    match (term, expected.force()) {
         (Term::SrcPos(box term, src_pos), expected) => check(&TypeEnv { src_pos, ..env.clone() }, term, expected),
         (Term::Fun(parameter, box body), hir::Type::Fun(box domain, box codomain)) => {
             let env = env.extend(parameter.name.text.clone(), hir::Scheme::new(domain.clone()));
@@ -212,6 +213,8 @@ pub(crate) mod decl {
                     };
 
                     for Constructor { name: def, type_repr } in decl.cases {
+                        env.constructors_to_types
+                            .insert(def.name.text.clone(), target_type.clone());
                         match type_repr {
                             Some(type_repr) => {
                                 let type_repr = hir::Type::new(type_repr, env);
@@ -441,7 +444,7 @@ pub(crate) mod pat {
                     env.report(IncompatiblePatternTypeError);
                     return hir::Type::Any;
                 };
-                check_pat(env, ctx, pat, hir_type)
+                hir_type
             }
             Elements(elements) => hir::Type::Pair(
                 elements
@@ -458,6 +461,16 @@ pub(crate) mod pat {
             (PatternSrcPos(box pat, src_pos), expected) => {
                 env.src_pos = src_pos;
                 check_pat(env, ctx, pat, expected)
+            }
+            (Constructor(constructor, argument), hir::Type::Hole(type_repr)) => {
+                let Some(hir_type) = env.constructors_to_types.get(&constructor.name.text).cloned() else {
+                    env.report(IncompatiblePatternTypeError);
+                    return hir::Type::Any;
+                };
+
+                let new_type_repr = check_pat(env, ctx, Constructor(constructor, argument), hir_type);
+                type_repr.update(new_type_repr.clone());
+                new_type_repr
             }
             (Constructor(constructor, None), hir::Type::Constructor(type_repr)) => {
                 let Some(hir::AlgebraicDataType { constructors, .. }) = env.types.get(&type_repr.name.text) else {
@@ -497,12 +510,8 @@ pub(crate) mod pat {
                 hir::Type::Pair(elements)
             }
             (Variable(var), expected) => {
-                let tt = ctx
-                    .entry(var.name.text.clone())
-                    .or_insert_with(|| env.fresh_type_variable())
-                    .clone();
-                env.assumptions.insert(var.name.text.clone(), Scheme::new(tt.clone()));
-                env.unify_catch(&expected, &tt);
+                env.assumptions
+                    .insert(var.name.text.clone(), Scheme::new(expected.clone()));
                 expected
             }
             (term, expected) => {

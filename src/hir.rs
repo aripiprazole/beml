@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    fmt::Debug,
     hash::Hash,
     path::PathBuf,
     sync::{Arc, RwLock},
@@ -122,7 +123,7 @@ pub enum CaseTree {
 }
 
 /// Monomorphic type. It is used to represent the type of a term in the HIR.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub enum Type {
     Any,
     Pair(Vec<Type>),           // 'a * 'b
@@ -268,9 +269,14 @@ impl Scheme {
     }
 }
 
-impl Type {}
-
 impl Type {
+    pub fn force(self) -> Type {
+        match self {
+            Type::Hole(h) => h.value().unwrap_or(Type::Any),
+            other => other,
+        }
+    }
+
     pub fn new(abstr: crate::abstr::Type, env: &TypeEnv) -> Self {
         fn go(vars: &mut HashMap<String, Type>, env: &TypeEnv, value: crate::abstr::Type) -> Type {
             use crate::abstr::Type::*;
@@ -354,6 +360,39 @@ impl Type {
                 Err(IncompatibleConstructors(lconstructor, rconstructor))
             }
             (lhs, rhs) => Err(IncompatibleTypes(lhs, rhs)),
+        }
+    }
+}
+
+struct Join<'a, 'b, T: Debug>(&'a Vec<T>, &'b str);
+
+impl<'a, 'b, T: Debug> Debug for Join<'a, 'b, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for (idx, element) in self.0.iter().enumerate() {
+            if idx > 0 {
+                write!(f, "{}", self.1)?;
+            }
+            Debug::fmt(element, f)?;
+        }
+        Ok(())
+    }
+}
+
+impl Debug for Type {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Type::Any => write!(f, "*"),
+            Type::Pair(elements) => write!(f, "{:?}", Join(elements, " * ")),
+            Type::Tuple(elements) => write!(f, "({:?})", Join(elements, ", ")),
+            Type::Fun(box domain, box codomain) => write!(f, "({:?} -> {:?})", domain, codomain),
+            Type::App(reference, box argument) => write!(f, "{:?} {}", argument, reference.name.text),
+            Type::Local(box local) => write!(f, "{:?}", local),
+            Type::Constructor(constructor) => write!(f, "{}", constructor.name.text),
+            Type::Meta(idx) => write!(f, "?{}", idx),
+            Type::Hole(h) => match h.value() {
+                Some(v) => write!(f, "{:?}", v),
+                None => write!(f, "_"),
+            },
         }
     }
 }
