@@ -352,6 +352,7 @@ impl Type {
             (Hole(h), value) | (value, Hole(h)) => match h.value() {
                 Some(contents) => contents.unify(value),
                 None => {
+                    value.pre_check(&h)?;
                     h.update(value);
                     Ok(())
                 }
@@ -360,6 +361,28 @@ impl Type {
                 Err(IncompatibleConstructors(lconstructor, rconstructor))
             }
             (lhs, rhs) => Err(IncompatibleTypes(lhs, rhs)),
+        }
+    }
+
+    fn pre_check(&self, hole: &Variable) -> Result<(), UnificationError> {
+        use Type::*;
+        use UnificationError::*;
+
+        match self {
+            Hole(h) if h.0 == hole.0 => Err(OccursCheck),
+            Pair(elements) | Tuple(elements) => {
+                for element in elements {
+                    element.pre_check(hole)?;
+                }
+                Ok(())
+            }
+            Fun(box domain, box codomain) => {
+                domain.pre_check(hole)?;
+                codomain.pre_check(hole)
+            }
+            App(_, box argument) => argument.pre_check(hole),
+            Local(box local) => local.pre_check(hole),
+            _ => Ok(()),
         }
     }
 }
