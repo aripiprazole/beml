@@ -212,9 +212,9 @@ pub(crate) mod decl {
                     })
                     .collect::<Vec<_>>();
                 let scheme = match variables.as_slice() {
-                    [] => hir::Type::Constructor(decl.def.clone().use_reference()),
-                    [variable] => hir::Type::App(decl.def.clone().use_reference(), variable.clone().into()),
-                    _ => hir::Type::App(decl.def.clone().use_reference(), hir::Type::Tuple(variables).into()),
+                    [] => hir::Type::Constructor(decl.def.clone().use_at(env)),
+                    [variable] => hir::Type::App(decl.def.clone().use_at(env), variable.clone().into()),
+                    _ => hir::Type::App(decl.def.clone().use_at(env), hir::Type::Tuple(variables).into()),
                 };
                 let adt = Rc::new(hir::AlgebraicDataType {
                     definition: decl.def.clone(),
@@ -532,17 +532,17 @@ pub(crate) mod pat {
             dbg!(specialize(scrutinee, vec![
                 Case {
                     pattern: Constructor(
-                        cons.clone().use_reference(),
+                        cons.clone().use_at(&HasNowhere),
                         Some(Box::new(Elements(vec![
                             Constructor(
-                                cons.clone().use_reference(),
+                                cons.clone().use_at(&HasNowhere),
                                 Some(Box::new(Elements(vec![
                                     Variable(Definition::new("x")),
                                     Variable(Definition::new("xs")),
                                 ])))
                             ),
                             Constructor(
-                                cons.clone().use_reference(),
+                                cons.clone().use_at(&HasNowhere),
                                 Some(Box::new(Elements(vec![
                                     Variable(Definition::new("x'")),
                                     Variable(Definition::new("xs'")),
@@ -553,7 +553,7 @@ pub(crate) mod pat {
                     body: infer(&env, Term::Int(42))
                 },
                 Case {
-                    pattern: Constructor(nil.use_reference(), None),
+                    pattern: Constructor(nil.use_at(&HasNowhere), None),
                     body: infer(&env, Term::Int(42))
                 }
             ]));
@@ -562,34 +562,38 @@ pub(crate) mod pat {
 }
 
 macro_rules! intrinsic_algebraic_data_type {
-    ($name:ident) => {{
+    ($types:expr, $name:ident) => {{
+        let env = $types;
         let definition = Definition::new(stringify!($name));
-        Rc::new(hir::AlgebraicDataType {
+        let adt = Rc::new(hir::AlgebraicDataType {
             definition: definition.clone(),
             arity: 0,
-            scheme: hir::Scheme::new(hir::Type::Constructor(definition.use_reference())),
+            scheme: hir::Scheme::new(hir::Type::Constructor(definition.clone().use_at(env))),
             constructors: Default::default(),
-        })
+        });
+        env.types.insert(definition.name.text.clone(), adt.clone());
     }};
 }
 
 impl TypeEnv {
     pub fn new(file: PathBuf, text: String) -> Self {
-        let mut types = im_rc::HashMap::default();
-        types.insert("int".into(), intrinsic_algebraic_data_type!(int));
-        types.insert("string".into(), intrinsic_algebraic_data_type!(int));
-        types.insert("bool".into(), intrinsic_algebraic_data_type!(bool));
-        Self {
+        let mut types = Self {
             file,
             text,
             src_pos: Loc::Nowhere,
-            types,
+            types: im_rc::HashMap::default(),
             constructors_to_types: Default::default(),
 
             assumptions: Default::default(),
             errors: Rc::new(RefCell::new(vec![])),
             counter: Rc::new(Cell::new(0)),
-        }
+        };
+
+        intrinsic_algebraic_data_type!(&mut types, int);
+        intrinsic_algebraic_data_type!(&mut types, bool);
+        intrinsic_algebraic_data_type!(&mut types, string);
+
+        types
     }
 
     pub fn fresh_type_variable(&self) -> hir::Type {
@@ -605,7 +609,7 @@ impl TypeEnv {
             .clone()
             .definition
             .clone()
-            .use_reference()
+            .use_at(self)
     }
 
     pub fn extend(&self, name: String, poly: hir::Scheme) -> Self {
@@ -640,5 +644,11 @@ impl TypeEnv {
             source_code: NamedSource::new(self.file.to_str().unwrap(), self.text.clone()),
             source,
         })?
+    }
+}
+
+impl HasLocation for TypeEnv {
+    fn src_pos(&self) -> crate::loc::Loc {
+        self.src_pos.clone()
     }
 }

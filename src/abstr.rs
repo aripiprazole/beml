@@ -217,11 +217,27 @@ pub struct File {
     pub text: String,
 }
 
+pub trait HasLocation {
+    /// Returns the location of the current context. So we can use it
+    /// to get the location of the current term and represents the
+    /// references to definitions.
+    fn src_pos(&self) -> crate::loc::Loc;
+}
+
+/// Returns nowhere whenever we request the location of the context.
+pub struct HasNowhere;
+
+impl HasLocation for HasNowhere {
+    fn src_pos(&self) -> crate::loc::Loc {
+        crate::loc::Loc::Nowhere
+    }
+}
+
 impl Definition {
-    pub fn use_reference(self: Arc<Self>) -> Reference {
+    pub fn use_at<T: HasLocation>(self: Arc<Self>, ctx: &T) -> Reference {
         let reference = Reference {
             name: self.name.clone(),
-            loc: self.loc.clone(),
+            loc: ctx.src_pos(),
             definition: self.clone(),
         };
         self.references.write().unwrap().push(reference.clone());

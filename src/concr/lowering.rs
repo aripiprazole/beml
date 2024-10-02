@@ -107,16 +107,6 @@ impl LoweringCtx {
         definition
     }
 
-    pub fn use_reference(&self, variable: Arc<abstr::Definition>) -> abstr::Reference {
-        let reference = abstr::Reference {
-            name: variable.name.clone(),
-            loc: self.src_pos.clone(),
-            definition: variable.clone(),
-        };
-        variable.references.write().unwrap().push(reference.clone());
-        reference
-    }
-
     pub fn report_error<T: miette::Diagnostic + std::error::Error + Send + Sync + 'static>(&self, error: T) {
         let report = self.wrap_error::<(), T>(error).unwrap_err();
         self.report_direct_error(report);
@@ -184,5 +174,11 @@ impl LoweringCtx {
         terms.push(acc);
 
         Ok(terms)
+    }
+}
+
+impl abstr::HasLocation for LoweringCtx {
+    fn src_pos(&self) -> crate::loc::Loc {
+        self.src_pos.clone()
     }
 }

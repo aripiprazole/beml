@@ -256,26 +256,32 @@ impl Scheme {
         }
         go(&holes, self.mono.clone())
     }
-
-    pub fn apply(&self, pat: Type, env: &TypeEnv) -> Type {
-        match self.instantiate(env) {
-            Type::App(reference, box argument) => {
-                env.unify_catch(&pat, &argument);
-                Type::App(reference, pat.into())
-            }
-            t => t,
-        }
-    }
 }
 
 impl Type {
+    /// Force the type to be fully instantiated. The type can have holes,
+    /// which are represented by [Variable]s. This function will replace
+    /// the holes with the actual type.
     pub fn force(self) -> Type {
-        match self {
-            Type::Flexible(h) => h.value().unwrap_or(Type::Any),
-            other => other,
+        if let Type::Flexible(h) = self {
+            h.value().unwrap_or(Type::Any)
+        } else {
+            self
         }
     }
 
+    /// Creates a new type from an abstract syntax tree.
+    pub fn new(abstr: crate::abstr::Type, env: &TypeEnv) -> Self {
+        let vars = abstr
+            .ftv()
+            .into_iter()
+            .map(|id| (id, env.fresh_type_variable()))
+            .collect();
+
+        Self::new_with_args(&vars, env, abstr)
+    }
+
+    /// Creates a new type from an abstract syntax tree with type variables.
     pub fn new_with_args(vars: &HashMap<String, Type>, env: &TypeEnv, abstr: crate::abstr::Type) -> Self {
         use crate::abstr::Type::*;
         match abstr {
@@ -307,17 +313,8 @@ impl Type {
         }
     }
 
-    /// Creates a new type from an abstract syntax tree.
-    pub fn new(abstr: crate::abstr::Type, env: &TypeEnv) -> Self {
-        let vars = abstr
-            .ftv()
-            .into_iter()
-            .map(|id| (id, env.fresh_type_variable()))
-            .collect();
-
-        Self::new_with_args(&vars, env, abstr)
-    }
-
+    /// Generalizes a type. It will replace all the type variables with
+    /// rigid type variables.
     pub fn generalize(self) -> Scheme {
         fn go(vars: &mut Vec<String>, value: Type) -> Type {
             use Type::*;
