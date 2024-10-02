@@ -396,11 +396,10 @@ mod tests {
 
     fn parse(text: &str, f: impl FnOnce(&mut Parser) -> miette::Result<Term>) -> miette::Result<Term> {
         let mut p = Parser {
-            file: PathBuf::new(),
+            data: Source::from(text),
             lexer: Token::lexer(text),
             lastpos: 0,
             curr: None,
-            text: text.into(),
             errors: vec![],
             terms: vec![],
             gas: Cell::new(0),

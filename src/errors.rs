@@ -1,8 +1,6 @@
 use std::fmt::Display;
 
-use miette::NamedSource;
-
-use crate::loc::Loc;
+use crate::loc::{Loc, Source};
 
 /// Error that can occur during the compilation process. It composes all errors of that
 /// compilation process.
@@ -24,7 +22,7 @@ pub struct LoweringError<E: miette::Diagnostic + Display + std::error::Error + S
     pub loc: Loc,
 
     #[source_code]
-    pub source_code: NamedSource,
+    pub source_code: Source,
 
     #[source]
     pub source: E,

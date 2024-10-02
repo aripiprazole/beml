@@ -2,20 +2,18 @@ use std::cell::Cell;
 
 use errors::UnresolvedVariableError;
 use fxhash::FxBuildHasher;
-use miette::NamedSource;
 
 use crate::{
     errors::LoweringError,
     hir::{self, Scheme, Typeable},
-    loc::Loc,
+    loc::{Loc, Source},
 };
 
 use super::*;
 
 #[derive(Clone)]
 pub struct TypeEnv {
-    pub(crate) file: PathBuf,
-    pub(crate) text: String,
+    pub(crate) data: Source,
     pub(crate) src_pos: Loc,
     pub(crate) types: im_rc::HashMap<String, Rc<hir::AlgebraicDataType>, FxBuildHasher>,
     pub(crate) constructors_to_types: im_rc::HashMap<String, Rc<hir::AlgebraicDataType>, FxBuildHasher>,
@@ -30,9 +28,9 @@ pub fn infer(env: &TypeEnv, term: Term) -> hir::Term {
     match term {
         SrcPos(box term, src_pos) => infer(&TypeEnv { src_pos, ..env.clone() }, term),
 
-        // Γ ⊢ (x : a)
+        // Γ ⊢ (x : 'a, ...)
         // --------------
-        // [x] : a list
+        // [x, ...] : 'a list
         List(elements) => {
             let h = env.fresh_type_variable();
             let elements = elements
@@ -50,6 +48,10 @@ pub fn infer(env: &TypeEnv, term: Term) -> hir::Term {
                 type_repr: hir::app_type(env, env.get_type("list"), h),
             }
         }
+
+        // Γ ⊢ (x : 'a, y : 'b, ...)
+        // ---------------------------
+        // (x, y, ...) : 'a * 'b * ...
         Pair(elements) => {
             let elements = elements.into_iter().map(|term| infer(env, term)).collect::<Vec<_>>();
 
@@ -59,6 +61,10 @@ pub fn infer(env: &TypeEnv, term: Term) -> hir::Term {
                 type_repr: hir::Type::Pair(elements.into_iter().map(|t| t.type_repr).collect()),
             }
         }
+
+        // Γ (x : 'a) ⊢ body : 'b
+        // -----------------------
+        // fun x -> body : 'a -> 'b
         Fun(parameter, box body) => {
             let h = env.fresh_type_variable();
             let fun_env = env.extend(parameter.name.text.clone(), Scheme::new(h.clone()));
@@ -71,6 +77,67 @@ pub fn infer(env: &TypeEnv, term: Term) -> hir::Term {
                 value: hir::TermKind::Fun(parameter, body.into()),
             }
         }
+
+        // Γ ⊢ term : type
+        // ---------------
+        // term : type
+        Ascription(box term, type_repr) => check(env, term, hir::Type::new(type_repr, env)),
+
+        // Γ ⊢ f : 'a -> 'b, x : 'a
+        // ------------------------
+        // f x : 'b
+        App(box callee, box argument) => {
+            let h = env.fresh_type_variable();
+            let callee = infer(env, callee);
+            let argument = infer(env, argument);
+            env.unify_catch(&hir::fun_type(&argument.type_repr, &h), &callee);
+
+            hir::Term {
+                type_repr: h,
+                src_pos: env.src_pos.clone(),
+                value: hir::TermKind::App(callee.into(), argument.into()),
+            }
+        }
+
+        // Γ ⊢ x : 'a
+        // -----------
+        // x : 'a
+        Var(var) => match env.assumptions.get(&var.name.text) {
+            Some(value) => hir::Term {
+                type_repr: value.instantiate(env),
+                src_pos: env.src_pos.clone(),
+                value: hir::TermKind::Var(var),
+            },
+            None => {
+                env.report(UnresolvedVariableError { name: var.name.text });
+
+                hir::Term {
+                    type_repr: hir::Type::Any,
+                    src_pos: env.src_pos.clone(),
+                    value: hir::TermKind::Error,
+                }
+            }
+        },
+
+        //
+        // ---------------
+        // 42 : int
+        Int(i) => hir::Term {
+            type_repr: hir::Type::Constructor(env.get_type("int")),
+            src_pos: env.src_pos.clone(),
+            value: hir::TermKind::Int(i),
+        },
+
+        //
+        // ---------------
+        // "..." : int
+        Text(text) => hir::Term {
+            type_repr: hir::Type::Constructor(env.get_type("string")),
+            src_pos: env.src_pos.clone(),
+            value: hir::TermKind::Text(text),
+        },
+
+        // More complex inferences
         Match(box scrutinee, cases) => {
             let scrutinee = infer(env, scrutinee);
             let h = env.fresh_type_variable();
@@ -92,45 +159,6 @@ pub fn infer(env: &TypeEnv, term: Term) -> hir::Term {
                 value: hir::TermKind::Match(pat::specialize(scrutinee, cases)),
             }
         }
-        Ascription(box term, type_repr) => check(env, term, hir::Type::new(type_repr, env)),
-        App(box callee, box argument) => {
-            let h = env.fresh_type_variable();
-            let callee = infer(env, callee);
-            let argument = infer(env, argument);
-            env.unify_catch(&hir::fun_type(&argument.type_repr, &h), &callee);
-
-            hir::Term {
-                type_repr: h,
-                src_pos: env.src_pos.clone(),
-                value: hir::TermKind::App(callee.into(), argument.into()),
-            }
-        }
-        Var(var) => match env.assumptions.get(&var.name.text) {
-            Some(value) => hir::Term {
-                type_repr: value.instantiate(env),
-                src_pos: env.src_pos.clone(),
-                value: hir::TermKind::Var(var),
-            },
-            None => {
-                env.report(UnresolvedVariableError { name: var.name.text });
-
-                hir::Term {
-                    type_repr: hir::Type::Any,
-                    src_pos: env.src_pos.clone(),
-                    value: hir::TermKind::Error,
-                }
-            }
-        },
-        Int(i) => hir::Term {
-            type_repr: hir::Type::Constructor(env.get_type("int")),
-            src_pos: env.src_pos.clone(),
-            value: hir::TermKind::Int(i),
-        },
-        Text(text) => hir::Term {
-            type_repr: hir::Type::Constructor(env.get_type("string")),
-            src_pos: env.src_pos.clone(),
-            value: hir::TermKind::Text(text),
-        },
         If(box condition, box then, box otherwise) => {
             let condition = check(env, condition, hir::Type::Constructor(env.get_type("bool")));
             let then = infer(env, then);
@@ -143,6 +171,7 @@ pub fn infer(env: &TypeEnv, term: Term) -> hir::Term {
                 value: hir::TermKind::If(condition.into(), then.into(), otherwise.into()),
             }
         }
+
         Let(def, box value, box next) => {
             let trial = hir::Scheme::new(env.fresh_type_variable());
             let value = infer(&env.extend(def.name.text.clone(), trial), value);
@@ -192,9 +221,12 @@ pub(crate) mod decl {
     #[allow(clippy::type_complexity)]
     pub struct Defer(pub Box<dyn FnOnce(&mut TypeEnv) -> Option<hir::Value>>);
 
+    /// Infers the type of a declaration. It returns a [Defer] that will be
+    /// called when the declaration is checked.
     pub fn infer_decl(env: &mut TypeEnv, decl: Decl) -> Defer {
         match decl {
             Decl::TypeDecl(decl) => {
+                // Find the free variables in the type.
                 let mut vars = HashMap::default();
                 let variables = decl
                     .variables
@@ -206,11 +238,15 @@ pub(crate) mod decl {
                             .clone()
                     })
                     .collect::<Vec<_>>();
+
+                // Creates the type of the algebraic data type.
                 let scheme = match variables.as_slice() {
                     [] => hir::Type::Constructor(decl.def.clone().use_at(env)),
                     [variable] => hir::Type::App(decl.def.clone().use_at(env), variable.clone().into()),
                     _ => hir::Type::App(decl.def.clone().use_at(env), hir::Type::Tuple(variables).into()),
                 };
+
+                // Creates the algebraic data type.
                 let adt = Rc::new(hir::AlgebraicDataType {
                     definition: decl.def.clone(),
                     arity: decl.variables.len(),
@@ -222,16 +258,18 @@ pub(crate) mod decl {
                 env.types.insert(decl.def.name.text.clone(), adt.clone());
 
                 Defer(Box::new(move |env| {
-                    for Constructor { name: def, type_repr } in decl.cases {
+                    for Constructor { def, type_repr } in decl.cases {
                         let constructor_name = def.name.text.clone();
                         let mut constructors = adt.constructors.borrow_mut();
                         env.constructors_to_types.insert(constructor_name.clone(), adt.clone());
+
                         if let Some(type_repr) = type_repr {
-                            let type_repr = hir::Type::new_with_args(&vars, env, type_repr);
-                            let constructor_type = hir::fun_type(&type_repr, &scheme).generalize();
+                            let parameter_type = hir::Type::new_with_args(&vars, env, type_repr);
+                            let constructor_type = hir::fun_type(&parameter_type, &scheme).generalize();
+
                             env.assumptions.insert(def.name.text.clone(), constructor_type.clone());
                             constructors.insert(constructor_name, hir::Constructor {
-                                type_repr: Some(type_repr),
+                                type_repr: Some(parameter_type),
                                 scheme: constructor_type,
                             });
                         } else {
@@ -522,7 +560,7 @@ pub(crate) mod pat {
 
         #[test]
         fn test_specialize() {
-            let env = TypeEnv::new(Default::default(), Default::default());
+            let env = TypeEnv::new(Source::from(""));
             let cons = Definition::new("Cons");
             let nil = Definition::new("Nil");
 
@@ -574,10 +612,10 @@ macro_rules! intrinsic_algebraic_data_type {
 }
 
 impl TypeEnv {
-    pub fn new(file: PathBuf, text: String) -> Self {
+    /// Creates a new type environment.
+    pub fn new(data: Source) -> Self {
         let mut types = Self {
-            file,
-            text,
+            data,
             src_pos: Loc::Nowhere,
             types: im_rc::HashMap::default(),
             constructors_to_types: Default::default(),
@@ -594,12 +632,15 @@ impl TypeEnv {
         types
     }
 
+    /// Creates a new type variable.
     pub fn fresh_type_variable(&self) -> hir::Type {
         let idx = self.counter.get();
         self.counter.set(idx + 1);
         hir::Type::Flexible(hir::Variable::new(self.counter.get()))
     }
 
+    /// Gets the type of a name. It will panic if the type is not found, it's used
+    /// to get the type of intrinsic types.
     pub fn get_type(&self, name: &str) -> Reference {
         self.types
             .get(name)
@@ -610,20 +651,24 @@ impl TypeEnv {
             .use_at(self)
     }
 
+    /// Extends the type environment with a new assumption.
     pub fn extend(&self, name: String, poly: hir::Scheme) -> Self {
         let mut new_type_env = self.clone();
         new_type_env.assumptions.insert(name, poly);
         new_type_env
     }
 
+    /// Reports an error directly to the type environment.
     pub fn report_direct_error(&self, error: miette::Report) {
         self.errors.borrow_mut().push(error);
     }
 
+    /// Reports an error to the type environment.
     pub fn report(&self, error: impl miette::Diagnostic + Send + Sync + 'static) {
         self.report_direct_error(self.wrap_error::<(), _>(error).unwrap_err());
     }
 
+    /// Unifies two types, and reports an error if it fails.
     pub fn unify_catch<A: Typeable, B: Typeable>(&self, lhs: &A, rhs: &B) {
         let lhs = lhs.type_of();
         let rhs = rhs.type_of();
@@ -639,7 +684,7 @@ impl TypeEnv {
         T: miette::Diagnostic + std::error::Error + Send + Sync + 'static, {
         Err(LoweringError {
             loc: self.src_pos.clone(),
-            source_code: NamedSource::new(self.file.to_str().unwrap(), self.text.clone()),
+            source_code: self.data.clone(),
             source,
         })?
     }

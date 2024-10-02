@@ -445,13 +445,16 @@ pub mod decl {
                 let name = ctx.new_constructor(name);
                 let type_repr = lower_type(ctx.clone(), type_repr)?;
                 Ok(abstr::Constructor {
-                    name,
+                    def: name,
                     type_repr: Some(type_repr),
                 })
             }
             Constructor(Constructor { name, type_repr: None }) => {
                 let name = ctx.new_constructor(name);
-                Ok(abstr::Constructor { name, type_repr: None })
+                Ok(abstr::Constructor {
+                    def: name,
+                    type_repr: None,
+                })
             }
             _ => ctx.wrap_error(ConstructorSyntaxError),
         }
@@ -464,7 +467,7 @@ mod tests {
 
     #[test]
     fn test_let_f_x_in_x() {
-        let ctx = LoweringCtx::new("".into(), "".into());
+        let ctx = LoweringCtx::new(Source::from(""));
         crate::aux::golden_test! {
             expected:
 r#"Ok(

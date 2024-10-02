@@ -3,7 +3,6 @@ use std::{
     collections::HashMap,
     fmt::Debug,
     hash::Hash,
-    path::PathBuf,
     rc::Rc,
     sync::{Arc, RwLock},
 };
@@ -16,7 +15,7 @@ use crate::{
         typing::TypeEnv,
         Definition, Reference,
     },
-    loc::Loc,
+    loc::{Loc, Source},
 };
 
 /// A term is a node in the HIR. It has a [TermKind] and a type. It holds
@@ -207,7 +206,7 @@ pub struct Value {
 /// A file is a collection of definitions and algebraic data types.
 #[derive(Debug, Clone)]
 pub struct File {
-    pub path: PathBuf,
+    pub source: Source,
     pub algebraic_data_types: im_rc::HashMap<String, Rc<AlgebraicDataType>, FxBuildHasher>,
     pub definitions: im::HashMap<String, Value, FxBuildHasher>,
 }
@@ -246,6 +245,7 @@ impl Hash for Variable {
 }
 
 impl Scheme {
+    /// Creates a new scheme from a type without generalizing it.
     pub fn new(value: Type) -> Scheme {
         Scheme {
             args: vec![],
@@ -253,6 +253,8 @@ impl Scheme {
         }
     }
 
+    /// Instantiates a scheme. It will replace the rigid type variables with the
+    /// actual type holes.
     pub fn instantiate(&self, env: &TypeEnv) -> Type {
         fn go(holes: &HashMap<String, Type, FxBuildHasher>, tt: Type) -> Type {
             match tt {
@@ -366,6 +368,8 @@ impl Type {
         }
     }
 
+    /// Unification is the proccess of checking equality between two types and
+    /// filling the holes with the right type.
     pub fn unify(self, rhs: Type) -> Result<(), UnificationError> {
         use Type::*;
         use UnificationError::*;
@@ -373,6 +377,7 @@ impl Type {
         match (self, rhs) {
             (Any, _) | (_, Any) => Ok(()),
             (Local(box l_var), Local(box r_var)) => l_var.unify(r_var),
+            (Local(box arg), value) | (value, Local(box arg)) => value.unify(arg),
             (Constructor(l_con), Constructor(r_con)) if l_con.definition == r_con.definition => Ok(()),
             (App(l_name, box l_arg), App(r_name, box r_arg)) if l_name.definition == r_name.definition => {
                 l_arg.unify(r_arg)
@@ -390,17 +395,21 @@ impl Type {
             (Flexible(h), value) | (value, Flexible(h)) => match h.value() {
                 Some(contents) => contents.unify(value),
                 None => {
-                    value.pre_check(&h).unwrap();
+                    value.pre_check(&h)?;
                     h.update(value);
                     Ok(())
                 }
             },
+
+            // Unification errors, we can't unify two types.
             (App(l_name, _), App(r_name, _)) => Err(IncompatibleConstructors(l_name, r_name)),
             (Constructor(l_con), Constructor(r_con)) => Err(IncompatibleConstructors(l_con, r_con)),
             (lhs, rhs) => Err(IncompatibleTypes(lhs, rhs)),
         }
     }
 
+    /// Pre-check is the process of checking if the type is well-formed. It also
+    /// performs the occurs check, so we don't have infinite types.
     fn pre_check(&self, hole: &Variable) -> Result<(), UnificationError> {
         use Type::*;
         use UnificationError::*;

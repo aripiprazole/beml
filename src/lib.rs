@@ -14,6 +14,7 @@ pub mod parser;
 use std::path::PathBuf;
 
 use clap::Parser;
+use loc::Source;
 use miette::IntoDiagnostic;
 
 #[derive(Parser, Debug)]
@@ -31,7 +32,7 @@ pub fn program() -> miette::Result<()> {
     })
     .into_diagnostic()?;
     let args = Args::parse();
-    let file = PathBuf::from(args.main);
+    let file = Source::try_from(PathBuf::from(args.main))?;
     let file = parser::parse_file(file)?;
     let file = concr::lower_file(file)?;
     let file = abstr::lower_file(file)?;

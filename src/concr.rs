@@ -8,11 +8,11 @@ use crate::{
 use std::{
     cell::{Cell, RefCell},
     collections::HashMap,
-    path::PathBuf,
     rc::Rc,
 };
 
 use abstr::{Declaration, Definition};
+use loc::Source;
 use miette::IntoDiagnostic;
 
 pub use Term::*;
@@ -110,14 +110,13 @@ pub enum Term {
 
 #[derive(Debug)]
 pub struct File {
-    pub path: PathBuf,
     pub shebang: Option<String>,
     pub terms: Vec<Term>,
-    pub text: String,
+    pub source: Source,
 }
 
 pub fn lower_file(file: File) -> miette::Result<abstr::File> {
-    let mut ctx = lowering::LoweringCtx::new(file.path.clone(), file.text);
+    let mut ctx = lowering::LoweringCtx::new(file.source);
     let mut declarations = HashMap::default();
     let terms = file
         .terms
@@ -132,10 +131,9 @@ pub fn lower_file(file: File) -> miette::Result<abstr::File> {
 
     if ctx.errors.borrow().is_empty() {
         Ok(abstr::File {
-            path: file.path,
             shebang: file.shebang,
             declarations,
-            text: ctx.text,
+            source: ctx.data,
         })
     } else {
         Err(StepFailedError {
@@ -150,20 +148,19 @@ pub fn lower_file(file: File) -> miette::Result<abstr::File> {
 
 #[cfg(test)]
 mod tests {
-    use parser::Parser;
+    use parser::parse_file;
 
     use super::*;
 
     #[test]
     fn test_f_x() {
-        assert!(lower_file(Parser::parse(PathBuf::new(), r#"let f x = x"#).unwrap(),).is_ok());
+        assert!(lower_file(parse_file(Source::from(r#"let f x = x"#)).unwrap(),).is_ok());
     }
 
     #[test]
     fn test_type() {
         assert!(
-            lower_file(Parser::parse(PathBuf::new(), r#"type 'a list = | Nil | Cons of 'a * ('a list)"#).unwrap())
-                .is_ok()
+            lower_file(parse_file(Source::from(r#"type 'a list = | Nil | Cons of 'a * ('a list)"#)).unwrap()).is_ok()
         );
     }
 }

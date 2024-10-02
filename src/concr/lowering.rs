@@ -1,7 +1,5 @@
 use std::sync::Arc;
 
-use miette::NamedSource;
-
 use super::*;
 use crate::{concr::errors::*, errors::LoweringError};
 
@@ -9,8 +7,7 @@ use crate::{concr::errors::*, errors::LoweringError};
 pub struct LoweringCtx {
     pub(crate) src_pos: crate::loc::Loc,
     pub(crate) errors: Rc<RefCell<Vec<miette::Report>>>,
-    pub(crate) text: String,
-    file: PathBuf,
+    pub(crate) data: Source,
     variables: HashMap<String, Arc<abstr::Definition>>,
     constructors: HashMap<String, Arc<abstr::Definition>>,
     types: HashMap<String, Arc<abstr::Definition>>,
@@ -21,10 +18,9 @@ pub struct LoweringCtx {
 
 impl LoweringCtx {
     /// Creates a new lowering context
-    pub fn new(file: PathBuf, text: String) -> Self {
+    pub fn new(data: Source) -> Self {
         Self {
-            file,
-            text,
+            data,
             src_pos: crate::loc::Loc::default(),
             variables: Default::default(),
             constructors: Default::default(),
@@ -60,7 +56,7 @@ impl LoweringCtx {
         T: miette::Diagnostic + std::error::Error + Send + Sync + 'static, {
         Err(LoweringError {
             loc: self.src_pos.clone(),
-            source_code: NamedSource::new(self.file.to_str().unwrap(), self.text.clone()),
+            source_code: self.data.clone(),
             source,
         })?
     }
@@ -113,7 +109,7 @@ impl LoweringCtx {
     }
 
     pub fn report_direct_error(&self, error: miette::Report) {
-        let error = error.with_source_code(NamedSource::new(self.file.to_str().unwrap(), self.text.clone()));
+        let error = error.with_source_code(self.data.clone());
         self.errors.borrow_mut().push(error);
     }
 

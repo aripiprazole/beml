@@ -1,10 +1,10 @@
-use std::{cell::Cell, path::PathBuf};
+use std::cell::Cell;
 
 use crate::{
     concr::{File, Term},
     errors::{CompilerPass, StepFailedError},
     lexer::Token,
-    loc::Loc,
+    loc::{Loc, Source},
 };
 
 pub mod errors;
@@ -12,13 +12,11 @@ pub mod grammar;
 
 use errors::*;
 use logos::Logos;
-use miette::{IntoDiagnostic, NamedSource};
 
 /// Transforms the tokens into a concrete syntax tree.
 pub struct Parser<'a> {
     // File and text
-    file: PathBuf,
-    text: String,
+    data: Source,
     lexer: logos::Lexer<'a, crate::lexer::Token>,
 
     // Parsing state
@@ -32,51 +30,43 @@ pub struct Parser<'a> {
     gas: Cell<usize>,
 }
 
-/// Create a new parser.
-pub fn parse_file(file: PathBuf) -> miette::Result<File> {
-    let text = std::fs::read_to_string(&file).into_diagnostic()?;
-    Parser::parse(file, text.as_str())
+/// Parse a file with a text.
+pub fn parse_file(source: Source) -> miette::Result<File> {
+    let text = source.text.clone();
+    let mut p = Parser {
+        lexer: Token::lexer(&text),
+        data: source,
+        curr: None,
+        errors: vec![],
+        terms: vec![],
+        lastpos: 0,
+        gas: Cell::new(0),
+    };
+
+    // eat the first and bump into current token
+    p.bump();
+    while !p.eof() {
+        let decl = recover!(&mut p, grammar::decl(&mut p));
+        p.terms.push(decl);
+    }
+
+    if p.errors.is_empty() {
+        Ok(File {
+            terms: p.terms,
+            shebang: None,
+            source: p.data,
+        })
+    } else {
+        Err(StepFailedError {
+            compiler_pass: CompilerPass::Parsing,
+            errors: p.errors,
+        })?
+    }
 }
 
 impl<'a> Parser<'a> {
-    /// Parse a file with a text.
-    pub fn parse(file: PathBuf, text: &str) -> miette::Result<File> {
-        let mut p = Parser {
-            file,
-            lexer: Token::lexer(text),
-            curr: None,
-            errors: vec![],
-            text: text.into(),
-            terms: vec![],
-            lastpos: 0,
-            gas: Cell::new(0),
-        };
-
-        // eat the first and bump into current token
-        p.bump();
-        while !p.eof() {
-            let decl = recover!(&mut p, grammar::decl(&mut p));
-            p.terms.push(decl);
-        }
-
-        if p.errors.is_empty() {
-            Ok(File {
-                terms: p.terms,
-                path: p.file,
-                shebang: None,
-                text: text.into(),
-            })
-        } else {
-            Err(StepFailedError {
-                compiler_pass: CompilerPass::Parsing,
-                errors: p.errors,
-            })?
-        }
-    }
-
     pub fn report(&mut self, error: miette::Report) {
-        let source = NamedSource::new(self.file.to_str().unwrap_or(""), self.text.clone());
-        self.errors.push(error.with_source_code(source));
+        self.errors.push(error.with_source_code(self.data.clone()));
     }
 
     pub fn expect(&mut self, token: Token) -> Option<(String, crate::loc::Loc)> {
@@ -100,11 +90,10 @@ impl<'a> Parser<'a> {
     pub fn eat(&mut self, token: Token) -> miette::Result<(&str, crate::loc::Loc)> {
         let range = self.lexer.span();
         let text = self.lexer.slice();
-        let code = NamedSource::new(self.file.to_str().unwrap_or(""), self.text.clone());
         let span = Loc::Loc {
             startpos: range.start,
             endpos: range.end,
-            path: self.file.clone(),
+            path: self.data.clone(),
         };
         if Some(token) == self.curr {
             self.bump();
@@ -114,24 +103,23 @@ impl<'a> Parser<'a> {
                 token,
                 span,
                 actual: self.curr.unwrap_or(Token::Skip),
-                code,
+                source_code: self.data.clone(),
             })?
         }
     }
 
     pub fn unexpected_token<T>(&self, possibilities: &[Token]) -> miette::Result<T> {
         let range = self.lexer.span();
-        let code = NamedSource::new(self.file.to_str().unwrap_or(""), self.text.clone());
         let span = Loc::Loc {
             startpos: range.start,
             endpos: range.end,
-            path: self.file.clone(),
+            path: self.data.clone(),
         };
         Err(UnexpectedToken {
             actual: self.curr.unwrap_or(Token::Skip),
             possibilities: possibilities.to_vec(),
             span,
-            code,
+            source_code: self.data.clone(),
         })?
     }
 
@@ -162,7 +150,7 @@ impl<'a> Parser<'a> {
         Loc::Loc {
             startpos: range.start,
             endpos: range.end,
-            path: self.file.clone(),
+            path: self.data.clone(),
         }
     }
 
@@ -198,7 +186,7 @@ macro_rules! close {
         let span = Loc::Loc {
             startpos: m.start,
             endpos: $p.lastpos,
-            path: $p.file.clone(),
+            path: $p.data.clone(),
         };
         Ok(SrcPos(value.into(), span))
     }};
@@ -209,7 +197,6 @@ pub(crate) use close;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
 
     #[test]
     fn test_val() {
@@ -286,9 +273,9 @@ r#"Ok(
         ],
     },
 )"#,
-            input: Parser::parse(PathBuf::new(), r#"
-                val println : string -> unit
-            "#)
+            input: parse_file(Source::from(r#"
+                            val println : string -> unit
+                        "#))
         };
     }
 
@@ -448,11 +435,11 @@ r#"Ok(
         ],
     },
 )"#,
-            input: Parser::parse(PathBuf::new(), r#"
-                type 'a list =
-                | Nil
-                | Cons of 'a * ('a list)
-            "#)
+            input: parse_file(Source::from(r#"
+                            type 'a list =
+                            | Nil
+                            | Cons of 'a * ('a list)
+                        "#))
         };
     }
 
@@ -532,9 +519,9 @@ r#"Ok(
         ],
     },
 )"#,
-            input: Parser::parse(PathBuf::new(), r#"
-                let f x = x
-            "#)
+            input: parse_file(Source::from(r#"
+                            let f x = x
+                        "#))
         };
     }
 }

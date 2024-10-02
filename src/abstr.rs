@@ -3,7 +3,6 @@ use std::{
     collections::{HashMap, HashSet},
     fmt::Debug,
     hash::Hash,
-    path::PathBuf,
     rc::Rc,
     sync::{Arc, RwLock},
 };
@@ -18,7 +17,7 @@ pub use Term::*;
 use crate::{
     errors::{CompilerPass, StepFailedError},
     hir,
-    loc::Identifier,
+    loc::{Identifier, Source},
 };
 
 pub mod errors;
@@ -116,7 +115,7 @@ impl Type {
 
 #[derive(Debug, Clone)]
 pub struct Constructor {
-    pub name: Arc<Definition>,
+    pub def: Arc<Definition>,
     pub type_repr: Option<Type>,
 }
 
@@ -211,10 +210,9 @@ impl Pattern {
 
 #[derive(Debug, Clone)]
 pub struct File {
-    pub path: PathBuf,
     pub shebang: Option<String>,
     pub declarations: HashMap<Identifier, Decl, FxBuildHasher>,
-    pub text: String,
+    pub source: Source,
 }
 
 pub trait HasLocation {
@@ -247,7 +245,7 @@ impl Definition {
 
 /// Infer a file into a [hir::File]
 pub fn lower_file(file: File) -> miette::Result<hir::File> {
-    let mut env = TypeEnv::new(file.path.clone(), file.text.clone());
+    let mut env = TypeEnv::new(file.source);
     let mut definitions = im::HashMap::default();
     let defers = file
         .declarations
@@ -263,7 +261,7 @@ pub fn lower_file(file: File) -> miette::Result<hir::File> {
 
     if env.errors.borrow().is_empty() {
         Ok(hir::File {
-            path: file.path,
+            source: env.data,
             algebraic_data_types: env.types.into_iter().collect(),
             definitions,
         })
