@@ -1,16 +1,27 @@
-use std::sync::Arc;
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+    sync::Arc,
+};
 
-use super::*;
-use crate::{concr::errors::*, errors::LoweringError};
+use beml_tree::{
+    abstr::{self, Definition},
+    concr::*,
+    errors::{concr::*, LoweringError},
+    loc::{Identifier, Loc, Source},
+};
+use fxhash::FxBuildHasher;
+
+pub mod rules;
 
 #[derive(Clone)]
 pub struct LoweringCtx {
-    pub(crate) src_pos: crate::loc::Loc,
+    pub(crate) src_pos: Loc,
     pub(crate) errors: Rc<RefCell<Vec<miette::Report>>>,
     pub(crate) data: Source,
-    variables: HashMap<String, Arc<abstr::Definition>>,
-    constructors: HashMap<String, Arc<abstr::Definition>>,
-    types: HashMap<String, Arc<abstr::Definition>>,
+    variables: im_rc::HashMap<String, Arc<abstr::Definition>, FxBuildHasher>,
+    constructors: im_rc::HashMap<String, Arc<abstr::Definition>, FxBuildHasher>,
+    types: im_rc::HashMap<String, Arc<abstr::Definition>, FxBuildHasher>,
     counter: Rc<Cell<usize>>,
     #[cfg(debug_assertions)]
     gas: Rc<Cell<usize>>,
@@ -19,17 +30,18 @@ pub struct LoweringCtx {
 impl LoweringCtx {
     /// Creates a new lowering context
     pub fn new(data: Source) -> Self {
+        let mut types = im_rc::HashMap::default();
+        types.insert(String::from("int"), Definition::new("int"));
+        types.insert(String::from("string"), Definition::new("string"));
+        types.insert(String::from("unit"), Definition::new("unit"));
+        types.insert(String::from("local"), Definition::new("local"));
+
         Self {
             data,
-            src_pos: crate::loc::Loc::default(),
+            src_pos: beml_tree::loc::Loc::default(),
             variables: Default::default(),
             constructors: Default::default(),
-            types: HashMap::from([
-                (String::from("int"), Definition::new("int")),
-                (String::from("string"), Definition::new("string")),
-                (String::from("unit"), Definition::new("unit")),
-                (String::from("local"), Definition::new("local")),
-            ]),
+            types,
             errors: Default::default(),
             counter: Default::default(),
             #[cfg(debug_assertions)]
@@ -174,7 +186,7 @@ impl LoweringCtx {
 }
 
 impl abstr::HasLocation for LoweringCtx {
-    fn src_pos(&self) -> crate::loc::Loc {
+    fn src_pos(&self) -> beml_tree::loc::Loc {
         self.src_pos.clone()
     }
 }

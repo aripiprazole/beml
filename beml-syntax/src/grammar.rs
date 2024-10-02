@@ -1,5 +1,6 @@
 use super::*;
-use crate::{concr::*, loc::Identifier};
+
+use beml_tree::{concr::*, loc::Identifier};
 
 const EXPR_FIRST: &[Token] = &[
     Token::Let,
@@ -152,7 +153,7 @@ fn bin_op(p: &mut Parser, level: Lvl, stop_by: &[Token]) -> miette::Result<Term>
 fn equality(p: &mut Parser, level: Lvl, stop_by: &[Token]) -> miette::Result<Term> {
     let mut lhs = recover!(p, comparison(p, level, stop_by));
     while p.at_any(&[Token::Equals, Token::NotEquals]) {
-        let op = crate::loc::Identifier {
+        let op = beml_tree::loc::Identifier {
             text: p.text().into(),
             loc: p.loc(),
         };
@@ -167,7 +168,7 @@ fn equality(p: &mut Parser, level: Lvl, stop_by: &[Token]) -> miette::Result<Ter
 fn comparison(p: &mut Parser, level: Lvl, stop_by: &[Token]) -> miette::Result<Term> {
     let mut lhs = recover!(p, term(p, level, stop_by));
     while p.at_any(&[Token::Gt, Token::Gte, Token::Lt, Token::Lte]) {
-        let op = crate::loc::Identifier {
+        let op = beml_tree::loc::Identifier {
             text: p.text().into(),
             loc: p.loc(),
         };
@@ -182,7 +183,7 @@ fn comparison(p: &mut Parser, level: Lvl, stop_by: &[Token]) -> miette::Result<T
 fn term(p: &mut Parser, level: Lvl, stop_by: &[Token]) -> miette::Result<Term> {
     let mut lhs = recover!(p, factor(p, level, stop_by));
     while p.at_any(&[Token::Sub, Token::Sum]) {
-        let op = crate::loc::Identifier {
+        let op = beml_tree::loc::Identifier {
             text: p.text().into(),
             loc: p.loc(),
         };
@@ -201,7 +202,7 @@ fn factor(p: &mut Parser, level: Lvl, stop_by: &[Token]) -> miette::Result<Term>
         };
         let op = match (level, k) {
             (Lvl::Type, Token::Star) => BinOp::Star,
-            (_, Token::Star | Token::Div) => BinOp::UserDefined(crate::loc::Identifier { text: text.into(), loc }),
+            (_, Token::Star | Token::Div) => BinOp::UserDefined(beml_tree::loc::Identifier { text: text.into(), loc }),
             _ => p.unexpected_token(&[Token::Star, Token::Div])?,
         };
         p.bump();
@@ -277,7 +278,7 @@ fn fun_expr(p: &mut Parser) -> miette::Result<Term> {
     expect_or_bail!(p, Token::Fun);
     let mut parameters = vec![];
     while p.check(Token::Ident) {
-        parameters.push(crate::loc::Identifier {
+        parameters.push(beml_tree::loc::Identifier {
             text: p.text().into(),
             loc: p.loc(),
         });
@@ -323,7 +324,7 @@ fn identifier(p: &mut Parser) -> miette::Result<Identifier> {
         _ if p.check(Token::LParen) => {
             p.eat(Token::LParen)?;
             let op = if p.at_any(INFIX_OPERATORS) {
-                crate::loc::Identifier {
+                beml_tree::loc::Identifier {
                     loc: p.loc(),
                     text: p.text().into(),
                 }
@@ -336,7 +337,7 @@ fn identifier(p: &mut Parser) -> miette::Result<Identifier> {
         }
         _ if p.check(Token::Ident) => {
             let (text, loc) = p.eat(Token::Ident)?;
-            Ok(crate::loc::Identifier { text: text.into(), loc })
+            Ok(beml_tree::loc::Identifier { text: text.into(), loc })
         }
         _ => p.unexpected_token(&[Token::Ident, Token::LParen]),
     }
@@ -350,18 +351,18 @@ fn primary(p: &mut Parser, level: Lvl) -> miette::Result<Term> {
         }
         _ if p.check(Token::Ident) => {
             let (text, loc) = p.eat(Token::Ident)?;
-            Ok(Var(crate::loc::Identifier { text: text.into(), loc }))
+            Ok(Var(beml_tree::loc::Identifier { text: text.into(), loc }))
         }
         _ if p.check(Token::Meta) => {
             let (text, loc) = p.eat(Token::Meta)?;
-            Ok(Meta(crate::loc::Identifier {
+            Ok(Meta(beml_tree::loc::Identifier {
                 text: text[1..text.len()].into(),
                 loc,
             }))
         }
         _ if p.check(Token::Text) => {
             let (text, loc) = p.eat(Token::Text)?;
-            Ok(Text(crate::loc::Text {
+            Ok(Text(beml_tree::loc::Text {
                 value: text[1..text.len() - 1].into(),
                 loc,
             }))

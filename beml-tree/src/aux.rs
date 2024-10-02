@@ -1,5 +1,4 @@
-#[cfg_attr(test, macro_export)]
-#[allow(unused_macros)]
+#[macro_export]
 macro_rules! golden_test {
     { expected: $expected:expr, input: $input:expr } => {{
         let expected = $expected.trim();
@@ -9,6 +8,3 @@ macro_rules! golden_test {
         }
     }};
 }
-
-#[cfg(test)]
-pub use golden_test;

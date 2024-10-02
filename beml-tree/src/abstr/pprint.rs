@@ -75,11 +75,11 @@ impl Debug for PrettyPrint<'_, Term> {
     }
 }
 
-impl Debug for PrettyPrint<'_, Type> {
+impl Debug for PrettyPrint<'_, TypeRepr> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.0 {
-            Type::SrcPos(box t, _) => t.pretty_print().fmt(f),
-            Type::Pair(elements) => {
+            TypeRepr::SrcPos(box t, _) => t.pretty_print().fmt(f),
+            TypeRepr::Pair(elements) => {
                 write!(f, "(")?;
                 for (i, e) in elements.iter().enumerate() {
                     if i > 0 {
@@ -89,7 +89,7 @@ impl Debug for PrettyPrint<'_, Type> {
                 }
                 write!(f, ")")
             }
-            Type::Tuple(elements) => {
+            TypeRepr::Tuple(elements) => {
                 write!(f, "(")?;
                 for (i, e) in elements.iter().enumerate() {
                     if i > 0 {
@@ -99,26 +99,26 @@ impl Debug for PrettyPrint<'_, Type> {
                 }
                 write!(f, ")")
             }
-            Type::Fun(box domain, box codomain) => {
+            TypeRepr::Fun(box domain, box codomain) => {
                 domain.pretty_print().fmt(f)?;
                 write!(f, " -> ")?;
                 codomain.pretty_print().fmt(f)
             }
-            Type::App(callee, box argument) => {
+            TypeRepr::App(callee, box argument) => {
                 argument.pretty_print().fmt(f)?;
                 write!(f, " {}", callee.name.text)
             }
-            Type::Local(box value) => {
+            TypeRepr::Local(box value) => {
                 value.pretty_print().fmt(f)?;
                 write!(f, " local")
             }
-            Type::Meta(name) => {
+            TypeRepr::Meta(name) => {
                 write!(f, "'{}", name.text)
             }
-            Type::Constructor(constructor) => {
+            TypeRepr::Constructor(constructor) => {
                 write!(f, "{}", constructor.name.text)
             }
-            Type::Hole => write!(f, "_"),
+            TypeRepr::Hole => write!(f, "_"),
         }
     }
 }
@@ -168,8 +168,8 @@ impl Case {
     }
 }
 
-impl Type {
-    pub fn pretty_print(&self) -> PrettyPrint<'_, Type> {
+impl TypeRepr {
+    pub fn pretty_print(&self) -> PrettyPrint<'_, TypeRepr> {
         PrettyPrint(self)
     }
 }

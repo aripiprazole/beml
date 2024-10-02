@@ -1,0 +1,17 @@
+[package]
+name = "beml-cli"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "beml"
+path = "src/lib.rs"
+
+[dependencies]
+backtrace-on-stack-overflow = "0.3.0"
+bupropion = "0.0.18"
+beml-analysis = { path = "../beml-analysis" }
+beml-syntax = { path = "../beml-syntax" }
+beml-tree = { path = "../beml-tree" }
+clap = { version = "4.5.18", features = ["derive"] }
+miette = { version = "5.10.0", features = ["fancy"] }

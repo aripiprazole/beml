@@ -1,20 +1,7 @@
-#![feature(box_patterns)]
-#![feature(new_range_api)]
-#![feature(mem_copy_fn)]
-
-pub mod abstr;
-pub mod aux;
-pub mod concr;
-pub mod errors;
-pub mod hir;
-pub mod lexer;
-pub mod loc;
-pub mod parser;
-
 use std::path::PathBuf;
 
+use beml_tree::loc::Source;
 use clap::Parser;
-use loc::Source;
 use miette::IntoDiagnostic;
 
 #[derive(Parser, Debug)]
@@ -33,9 +20,21 @@ pub fn program() -> miette::Result<()> {
     .into_diagnostic()?;
     let args = Args::parse();
     let file = Source::try_from(PathBuf::from(args.main))?;
-    let file = parser::parse_file(file)?;
-    let file = concr::lower_file(file)?;
-    let file = abstr::lower_file(file)?;
+    let file = beml_syntax::parse_file(file)?;
+    let file = beml_analysis::lower_to_abstr(file)?;
+    let file = beml_analysis::lower_to_hir(file)?;
     let _ = file;
     Ok(())
+}
+
+// The main function wrapper around [`beml::program`].
+fn main() {
+    unsafe { backtrace_on_stack_overflow::enable() };
+
+    // Avoid printing print `Error: ` before the error message
+    // to maintain the language beauty!
+    if let Err(e) = program() {
+        eprintln!("{e:?}");
+        std::process::exit(1);
+    }
 }

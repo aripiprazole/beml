@@ -1,16 +1,3 @@
-[package]
-name = "beml"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-backtrace-on-stack-overflow = "0.3.0"
-bupropion = "0.0.18"
-clap = { version = "4.5.18", features = ["derive"] }
-fxhash = "0.2.1"
-im = "15.1.0"
-im-rc = "15.1.0"
-logos = "0.14.2"
-miette = { version = "5.10.0", features = ["fancy"] }
-thiserror = "1.0.64"
-tracing = "0.1.40"
+[workspace]
+resolver = "2"
+members = ["beml-analysis", "beml-cli", "beml-syntax", "beml-tree"]

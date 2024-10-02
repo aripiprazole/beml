@@ -1,3 +1,6 @@
+//! This crate provides all the data structures used in the abstract syntax tree,
+//! concrete syntax tree, and the intermediate representation.
+
 use std::{
     cell::RefCell,
     collections::HashMap,
@@ -10,11 +13,8 @@ use std::{
 use fxhash::FxBuildHasher;
 
 use crate::{
-    abstr::{
-        errors::{IncorrectTypeArityError, TypeDontHaveArgumentError, UnificationError},
-        typing::TypeEnv,
-        Definition, Reference,
-    },
+    abstr::{Definition, Reference},
+    errors::abstr::{IncorrectTypeArityError, TypeDontHaveArgumentError, UnificationError},
     loc::{Loc, Source},
 };
 
@@ -145,12 +145,20 @@ pub enum Type {
     Flexible(Variable),
 }
 
+pub trait Environment {
+    fn fresh_type_variable(&self) -> Type;
+
+    fn types(&self) -> &im_rc::HashMap<String, Rc<AlgebraicDataType>, FxBuildHasher>;
+
+    fn report<E: miette::Diagnostic + Send + Sync + 'static>(&self, error: E);
+}
+
 pub fn fun_type(domain: &Type, codomain: &Type) -> Type {
     Type::Fun(domain.clone().into(), codomain.clone().into())
 }
 
-pub fn app_type(env: &TypeEnv, reference: Reference, arg: Type) -> Type {
-    let adt = env.types.get(&reference.name.text).expect("type not found");
+pub fn app_type(env: &impl Environment, reference: Reference, arg: Type) -> Type {
+    let adt = env.types().get(&reference.name.text).expect("type not found");
     match (adt.arity, arg) {
         (0, arg) => {
             env.report(TypeDontHaveArgumentError { type_repr: arg });
@@ -255,7 +263,7 @@ impl Scheme {
 
     /// Instantiates a scheme. It will replace the rigid type variables with the
     /// actual type holes.
-    pub fn instantiate(&self, env: &TypeEnv) -> Type {
+    pub fn instantiate(&self, env: &impl Environment) -> Type {
         fn go(holes: &HashMap<String, Type, FxBuildHasher>, tt: Type) -> Type {
             match tt {
                 Type::Any => Type::Any,
@@ -293,7 +301,7 @@ impl Type {
     }
 
     /// Creates a new type from an abstract syntax tree.
-    pub fn new(abstr: crate::abstr::Type, env: &TypeEnv) -> Self {
+    pub fn new(abstr: crate::abstr::TypeRepr, env: &impl Environment) -> Self {
         let vars = abstr
             .ftv()
             .into_iter()
@@ -304,8 +312,10 @@ impl Type {
     }
 
     /// Creates a new type from an abstract syntax tree with type variables.
-    pub fn new_with_args(vars: &HashMap<String, Type>, env: &TypeEnv, abstr: crate::abstr::Type) -> Self {
-        use crate::abstr::Type::*;
+    pub fn new_with_args(
+        vars: &im_rc::HashMap<String, Type>, env: &impl Environment, abstr: crate::abstr::TypeRepr,
+    ) -> Self {
+        use crate::abstr::TypeRepr::*;
         match abstr {
             SrcPos(box term, _) => Self::new_with_args(vars, env, term),
             Pair(elements) => Type::Pair(

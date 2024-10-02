@@ -1,25 +1,12 @@
+//! This module contains the lowering rules for the concrete syntax tree.
+
 use super::*;
 
-use crate::{
-    errors::{CompilerPass, StepFailedError},
-    loc::Identifier,
-};
+use crate::loc::Identifier;
 
-use std::{
-    cell::{Cell, RefCell},
-    collections::HashMap,
-    rc::Rc,
-};
-
-use abstr::{Declaration, Definition};
 use loc::Source;
-use miette::IntoDiagnostic;
 
 pub use Term::*;
-
-mod errors;
-mod lowering;
-mod rules;
 
 #[derive(Debug)]
 pub struct TypeDecl {
@@ -113,54 +100,4 @@ pub struct File {
     pub shebang: Option<String>,
     pub terms: Vec<Term>,
     pub source: Source,
-}
-
-pub fn lower_file(file: File) -> miette::Result<abstr::File> {
-    let mut ctx = lowering::LoweringCtx::new(file.source);
-    let mut declarations = HashMap::default();
-    let terms = file
-        .terms
-        .into_iter()
-        .map(|decl| rules::decl::lower_decl(&mut ctx, decl))
-        .collect::<miette::Result<Vec<_>>>()?;
-    for rules::decl::Defer(f) in terms {
-        let decl = f(&mut ctx)?;
-
-        declarations.insert(decl.name().name.clone(), decl);
-    }
-
-    if ctx.errors.borrow().is_empty() {
-        Ok(abstr::File {
-            shebang: file.shebang,
-            declarations,
-            source: ctx.data,
-        })
-    } else {
-        Err(StepFailedError {
-            compiler_pass: CompilerPass::Lowering,
-
-            // this is safe, because we never use the `ctx.errors` after the call to `lower_file`
-            // and we never use the `ctx` after the call to `lower_file`
-            errors: unsafe { std::mem::take(&mut *ctx.errors.as_ptr()) },
-        })?
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use parser::parse_file;
-
-    use super::*;
-
-    #[test]
-    fn test_f_x() {
-        assert!(lower_file(parse_file(Source::from(r#"let f x = x"#)).unwrap(),).is_ok());
-    }
-
-    #[test]
-    fn test_type() {
-        assert!(
-            lower_file(parse_file(Source::from(r#"type 'a list = | Nil | Cons of 'a * ('a list)"#)).unwrap()).is_ok()
-        );
-    }
 }

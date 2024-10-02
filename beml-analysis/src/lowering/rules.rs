@@ -1,7 +1,6 @@
-use crate::{
-    abstr,
-    concr::{errors::*, lowering::*, *},
-};
+use miette::IntoDiagnostic;
+
+use super::*;
 
 pub fn lower_term(mut ctx: LoweringCtx, term: Term) -> miette::Result<abstr::Term> {
     ctx.burn();
@@ -71,11 +70,11 @@ pub fn lower_term(mut ctx: LoweringCtx, term: Term) -> miette::Result<abstr::Ter
             let pattern = pat::lower_pat(&mut ctx, pattern)?;
             let mut ctx = ctx.clone();
 
-            let mut fun_type = abstr::Type::Hole;
+            let mut fun_type = abstr::TypeRepr::Hole;
             let mut patterns = vec![];
             for parameter in parameters.into_iter().rev() {
                 let (pattern, type_repr) = lower_parameter(&mut ctx, parameter)?;
-                fun_type = abstr::Type::Fun(type_repr.into(), fun_type.into());
+                fun_type = abstr::TypeRepr::Fun(type_repr.into(), fun_type.into());
                 patterns.push(pattern);
             }
             let mut body = lower_term(ctx.clone(), body)?;
@@ -123,7 +122,7 @@ pub fn lower_term(mut ctx: LoweringCtx, term: Term) -> miette::Result<abstr::Ter
         Parens(None) => Ok(abstr::Pair(vec![])),           // () or unit
         Parens(Some(box value)) => lower_term(ctx, value), // (x)
 
-        Text(crate::loc::Text { value, loc }) => Ok(abstr::Text(crate::loc::Text { value, loc })),
+        Text(beml_tree::loc::Text { value, loc }) => Ok(abstr::Text(beml_tree::loc::Text { value, loc })),
 
         // if x then y else z
         If(If {
@@ -144,25 +143,24 @@ pub fn lower_term(mut ctx: LoweringCtx, term: Term) -> miette::Result<abstr::Ter
     }
 }
 
-pub fn lower_type(mut ctx: LoweringCtx, term: Term) -> miette::Result<abstr::Type> {
+pub fn lower_type(mut ctx: LoweringCtx, term: Term) -> miette::Result<abstr::TypeRepr> {
     match term {
         SrcPos(box term, loc) => {
             ctx.src_pos = loc.clone();
-            Ok(abstr::Type::SrcPos(lower_type(ctx, term)?.into(), loc))
+            Ok(abstr::TypeRepr::SrcPos(lower_type(ctx, term)?.into(), loc))
         }
-        Meta(name) => Ok(abstr::Type::Meta(name)),
+        Meta(name) => Ok(abstr::TypeRepr::Meta(name)),
         App(box argument, box callee) => {
             let argument = lower_type(ctx.clone(), argument)?;
             let callee = match lower_type(ctx.clone(), callee)? {
-                abstr::Type::SrcPos(box abstr::Type::Constructor(callee), _) | abstr::Type::Constructor(callee) => {
-                    callee
-                }
+                abstr::TypeRepr::SrcPos(box abstr::TypeRepr::Constructor(callee), _)
+                | abstr::TypeRepr::Constructor(callee) => callee,
                 _ => ctx.wrap_error(TypeCalleeIsNotAConstructorError)?,
             };
             if callee.name.text == "local" {
-                return Ok(abstr::Type::Local(argument.into()));
+                return Ok(abstr::TypeRepr::Local(argument.into()));
             }
-            Ok(abstr::Type::App(callee, argument.into()))
+            Ok(abstr::TypeRepr::App(callee, argument.into()))
         }
         Parens(Some(box type_repr)) => {
             if let BinOp(_, BinOp::Comma, _) = type_repr {
@@ -171,7 +169,7 @@ pub fn lower_type(mut ctx: LoweringCtx, term: Term) -> miette::Result<abstr::Typ
                     .into_iter()
                     .filter_map(|term| ctx.or_none(lower_type(ctx.clone(), term)))
                     .collect::<Vec<_>>();
-                Ok(abstr::Type::Tuple(type_repr))
+                Ok(abstr::TypeRepr::Tuple(type_repr))
             } else {
                 lower_type(ctx, type_repr) // (x)
             }
@@ -182,26 +180,26 @@ pub fn lower_type(mut ctx: LoweringCtx, term: Term) -> miette::Result<abstr::Typ
                 .into_iter()
                 .filter_map(|term| ctx.or_none(lower_type(ctx.clone(), term)))
                 .collect::<Vec<_>>();
-            Ok(abstr::Type::Pair(elements))
+            Ok(abstr::TypeRepr::Pair(elements))
         }
         BinOp(_, BinOp::Arrow, _) => Ok(ctx
             .sep_by(BinOp::Arrow, term)?
             .into_iter()
             .map(|term| match ctx.or_none(lower_type(ctx.clone(), term)) {
                 Some(value) => value,
-                None => abstr::Type::Hole,
+                None => abstr::TypeRepr::Hole,
             })
-            .reduce(|acc, value| abstr::Type::Fun(value.into(), acc.into()))
+            .reduce(|acc, value| abstr::TypeRepr::Fun(value.into(), acc.into()))
             .expect("this should never fail because we have at least two elements.")),
         Var(name) => ctx
             .lookup_type(name)
-            .map(|definition| abstr::Type::Constructor(definition.use_at(&ctx)))
+            .map(|definition| abstr::TypeRepr::Constructor(definition.use_at(&ctx)))
             .into_diagnostic(),
         _ => ctx.wrap_error(TypeSyntaxError),
     }
 }
 
-pub fn lower_parameter(ctx: &mut LoweringCtx, parameter: Term) -> miette::Result<(abstr::Pattern, abstr::Type)> {
+pub fn lower_parameter(ctx: &mut LoweringCtx, parameter: Term) -> miette::Result<(abstr::Pattern, abstr::TypeRepr)> {
     ctx.burn();
 
     match parameter {
@@ -215,13 +213,15 @@ pub fn lower_parameter(ctx: &mut LoweringCtx, parameter: Term) -> miette::Result
             Ok((abstr::Variable(name), type_repr))
         }
         Parens(_) => ctx.wrap_error(UnexpectedParameterAscriptionSyntaxError),
-        Var(name) => Ok((abstr::Variable(ctx.new_variable(name)), abstr::Type::Hole)),
+        Var(name) => Ok((abstr::Variable(ctx.new_variable(name)), abstr::TypeRepr::Hole)),
         _ => ctx.wrap_error(UnexpectedParameterSyntaxError),
     }
 }
 
 /// Pattern lowering uses mutable context to include the variables in the context.
 pub mod pat {
+    use miette::IntoDiagnostic;
+
     use super::*;
 
     pub fn lower_pat(ctx: &mut LoweringCtx, case: Term) -> miette::Result<abstr::Pattern> {
@@ -342,12 +342,12 @@ pub mod decl {
                 let pattern = pat::lower_pat(ctx, pattern)?;
 
                 Defer(Box::new(|ctx| {
-                    let mut fun_type = abstr::Type::Hole;
+                    let mut fun_type = abstr::TypeRepr::Hole;
                     let mut patterns = vec![];
 
                     for parameter in parameters.into_iter().rev() {
                         let (pattern, type_repr) = lower_parameter(ctx, parameter)?;
-                        fun_type = abstr::Type::Fun(type_repr.into(), fun_type.into());
+                        fun_type = abstr::TypeRepr::Fun(type_repr.into(), fun_type.into());
                         patterns.push(pattern);
                     }
 
@@ -401,19 +401,19 @@ pub mod decl {
         })
     }
 
-    pub fn lower_type_parameter(ctx: &mut LoweringCtx, term: Term) -> Vec<crate::loc::Identifier> {
+    pub fn lower_type_parameter(ctx: &mut LoweringCtx, term: Term) -> Vec<beml_tree::loc::Identifier> {
         let mut variables = vec![];
         match lower_type(ctx.clone(), term) {
-            Ok(abstr::Type::SrcPos(box abstr::Type::Tuple(elements), _) | abstr::Type::Tuple(elements)) => {
+            Ok(abstr::TypeRepr::SrcPos(box abstr::TypeRepr::Tuple(elements), _) | abstr::TypeRepr::Tuple(elements)) => {
                 for element in elements {
-                    let abstr::Type::Meta(variable) = element else {
+                    let abstr::TypeRepr::Meta(variable) = element else {
                         ctx.report_error(TypeSyntaxError);
                         continue;
                     };
                     variables.push(variable);
                 }
             }
-            Ok(abstr::Type::SrcPos(box abstr::Type::Meta(variable), _) | abstr::Type::Meta(variable)) => {
+            Ok(abstr::TypeRepr::SrcPos(box abstr::TypeRepr::Meta(variable), _) | abstr::TypeRepr::Meta(variable)) => {
                 variables.push(variable);
             }
             Ok(_) => ctx.report_error(TypeSyntaxError),
@@ -468,7 +468,7 @@ mod tests {
     #[test]
     fn test_let_f_x_in_x() {
         let ctx = LoweringCtx::new(Source::from(""));
-        crate::aux::golden_test! {
+        beml_tree::golden_test! {
             expected:
 r#"Ok(
     Match(

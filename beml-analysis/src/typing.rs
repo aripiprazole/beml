@@ -1,15 +1,19 @@
-use std::cell::Cell;
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+};
 
-use errors::UnresolvedVariableError;
-use fxhash::FxBuildHasher;
-
-use crate::{
-    errors::LoweringError,
-    hir::{self, Scheme, Typeable},
+use beml_tree::{
+    abstr::*,
+    errors::{
+        abstr::{IncompatiblePatternTypeError, UnresolvedConstructorError, UnresolvedVariableError},
+        LoweringError,
+    },
+    hir::{self, Environment, Scheme, Typeable},
     loc::{Loc, Source},
 };
 
-use super::*;
+use fxhash::FxBuildHasher;
 
 #[derive(Clone)]
 pub struct TypeEnv {
@@ -144,7 +148,7 @@ pub fn infer(env: &TypeEnv, term: Term) -> hir::Term {
             let cases = cases
                 .into_iter()
                 .map(|Case { pattern, body }| {
-                    let mut ctx = HashMap::default();
+                    let mut ctx = im_rc::HashMap::default();
                     let mut local_env = env.clone();
                     pat::check_pat(&mut local_env, &mut ctx, pattern.clone(), scrutinee.type_repr.clone());
                     let body = infer(&local_env, body);
@@ -227,7 +231,7 @@ pub(crate) mod decl {
         match decl {
             Decl::TypeDecl(decl) => {
                 // Find the free variables in the type.
-                let mut vars = HashMap::default();
+                let mut vars = im_rc::HashMap::default();
                 let variables = decl
                     .variables
                     .clone()
@@ -315,11 +319,10 @@ pub(crate) mod decl {
 /// Pattern inference, used for coverage checking and pattern checking
 /// in match expressions.
 pub(crate) mod pat {
-    use crate::abstr::errors::{IncompatiblePatternTypeError, UnresolvedConstructorError};
 
     use super::*;
 
-    pub type Pats<'a> = &'a mut HashMap<String, hir::Type, FxBuildHasher>;
+    pub type Pats<'a> = &'a mut im_rc::HashMap<String, hir::Type, FxBuildHasher>;
 
     pub struct Case {
         pub pattern: Pattern,
@@ -632,13 +635,6 @@ impl TypeEnv {
         types
     }
 
-    /// Creates a new type variable.
-    pub fn fresh_type_variable(&self) -> hir::Type {
-        let idx = self.counter.get();
-        self.counter.set(idx + 1);
-        hir::Type::Flexible(hir::Variable::new(self.counter.get()))
-    }
-
     /// Gets the type of a name. It will panic if the type is not found, it's used
     /// to get the type of intrinsic types.
     pub fn get_type(&self, name: &str) -> Reference {
@@ -663,11 +659,6 @@ impl TypeEnv {
         self.errors.borrow_mut().push(error);
     }
 
-    /// Reports an error to the type environment.
-    pub fn report(&self, error: impl miette::Diagnostic + Send + Sync + 'static) {
-        self.report_direct_error(self.wrap_error::<(), _>(error).unwrap_err());
-    }
-
     /// Unifies two types, and reports an error if it fails.
     pub fn unify_catch<A: Typeable, B: Typeable>(&self, lhs: &A, rhs: &B) {
         let lhs = lhs.type_of();
@@ -690,8 +681,24 @@ impl TypeEnv {
     }
 }
 
+impl Environment for TypeEnv {
+    fn fresh_type_variable(&self) -> hir::Type {
+        let idx = self.counter.get();
+        self.counter.set(idx + 1);
+        hir::Type::Flexible(hir::Variable::new(self.counter.get()))
+    }
+
+    fn types(&self) -> &im_rc::HashMap<String, Rc<hir::AlgebraicDataType>, FxBuildHasher> {
+        &self.types
+    }
+
+    fn report<E: miette::Diagnostic + Send + Sync + 'static>(&self, error: E) {
+        self.report_direct_error(self.wrap_error::<(), _>(error).unwrap_err());
+    }
+}
+
 impl HasLocation for TypeEnv {
-    fn src_pos(&self) -> crate::loc::Loc {
+    fn src_pos(&self) -> beml_tree::loc::Loc {
         self.src_pos.clone()
     }
 }

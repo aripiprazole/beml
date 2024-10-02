@@ -1,0 +1,12 @@
+[package]
+name = "beml-syntax"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+backtrace-on-stack-overflow = "0.3.0"
+bupropion = "0.0.18"
+beml-tree = { path = "../beml-tree" }
+clap = { version = "4.5.18", features = ["derive"] }
+miette = { version = "5.10.0", features = ["fancy"] }
+logos = "0.14.2"

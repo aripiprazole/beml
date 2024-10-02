@@ -1,28 +1,18 @@
 use std::{
-    cell::RefCell,
-    collections::{HashMap, HashSet},
     fmt::Debug,
     hash::Hash,
-    rc::Rc,
     sync::{Arc, RwLock},
 };
 
 use fxhash::FxBuildHasher;
-use typing::TypeEnv;
 pub use Body::*;
 pub use Decl::*;
 pub use Pattern::*;
 pub use Term::*;
 
-use crate::{
-    errors::{CompilerPass, StepFailedError},
-    hir,
-    loc::{Identifier, Source},
-};
+use crate::loc::{Identifier, Source};
 
-pub mod errors;
 pub mod pprint;
-pub mod typing;
 
 pub trait Declaration {
     fn name(&self) -> Arc<Definition>;
@@ -73,23 +63,23 @@ impl Debug for Reference {
 }
 
 #[derive(Debug, Clone)]
-pub enum Type {
-    SrcPos(Box<Type>, crate::loc::Loc),
-    Pair(Vec<Type>),              // 'a * 'b
-    Tuple(Vec<Type>),             // ('a, 'b)
-    Fun(Box<Type>, Box<Type>),    // 'a -> 'b
-    App(Reference, Box<Type>),    // 'a list | ('a, 'b) hashmap
-    Local(Box<Type>),             // 'a local - linear types
-    Meta(crate::loc::Identifier), // 'a | _
-    Constructor(Reference),       //  C
+pub enum TypeRepr {
+    SrcPos(Box<TypeRepr>, crate::loc::Loc),
+    Pair(Vec<TypeRepr>),               // 'a * 'b
+    Tuple(Vec<TypeRepr>),              // ('a, 'b)
+    Fun(Box<TypeRepr>, Box<TypeRepr>), // 'a -> 'b
+    App(Reference, Box<TypeRepr>),     // 'a list | ('a, 'b) hashmap
+    Local(Box<TypeRepr>),              // 'a local - linear types
+    Meta(crate::loc::Identifier),      // 'a | _
+    Constructor(Reference),            //  C
     Hole,
 }
 
-impl Type {
+impl TypeRepr {
     /// Computes the free type variables of a type.
-    pub fn ftv(&self) -> HashSet<String, FxBuildHasher> {
-        fn go(vars: &mut HashSet<String, FxBuildHasher>, value: &Type) {
-            use Type::*;
+    pub fn ftv(&self) -> im_rc::HashSet<String, FxBuildHasher> {
+        fn go(vars: &mut im_rc::HashSet<String, FxBuildHasher>, value: &TypeRepr) {
+            use TypeRepr::*;
             match value {
                 SrcPos(box term, _) => go(vars, term),
                 Pair(elements) => elements.iter().for_each(|element| go(vars, element)),
@@ -107,7 +97,7 @@ impl Type {
             }
         }
 
-        let mut vars = HashSet::default();
+        let mut vars = im_rc::HashSet::default();
         go(&mut vars, self);
         vars
     }
@@ -116,7 +106,7 @@ impl Type {
 #[derive(Debug, Clone)]
 pub struct Constructor {
     pub def: Arc<Definition>,
-    pub type_repr: Option<Type>,
+    pub type_repr: Option<TypeRepr>,
 }
 
 #[derive(Debug, Clone)]
@@ -143,7 +133,7 @@ pub enum Body {
 #[derive(Debug, Clone)]
 pub struct LetDecl {
     pub def: Arc<Definition>,
-    pub type_repr: Type,
+    pub type_repr: TypeRepr,
     pub body: Body,
     pub loc: crate::loc::Loc,
 }
@@ -182,7 +172,7 @@ pub enum Term {
     Pair(Vec<Term>),
     Fun(Arc<Definition>, Box<Term>),
     Match(Box<Term>, Vec<Case>),
-    Ascription(Box<Term>, Type),
+    Ascription(Box<Term>, TypeRepr),
     App(Box<Term>, Box<Term>),
     Var(Reference),
     Int(i64),
@@ -211,7 +201,7 @@ impl Pattern {
 #[derive(Debug, Clone)]
 pub struct File {
     pub shebang: Option<String>,
-    pub declarations: HashMap<Identifier, Decl, FxBuildHasher>,
+    pub declarations: im_rc::HashMap<Identifier, Decl, FxBuildHasher>,
     pub source: Source,
 }
 
@@ -240,38 +230,5 @@ impl Definition {
         };
         self.references.write().unwrap().push(reference.clone());
         reference
-    }
-}
-
-/// Infer a file into a [hir::File]
-pub fn lower_file(file: File) -> miette::Result<hir::File> {
-    let mut env = TypeEnv::new(file.source);
-    let mut definitions = im::HashMap::default();
-    let defers = file
-        .declarations
-        .into_iter()
-        .map(|(name, decl)| (name, typing::decl::infer_decl(&mut env, decl)))
-        .collect::<Vec<_>>();
-
-    for (name, typing::decl::Defer(f)) in defers {
-        if let Some(value) = f(&mut env) {
-            definitions.insert(name.text, value);
-        }
-    }
-
-    if env.errors.borrow().is_empty() {
-        Ok(hir::File {
-            source: env.data,
-            algebraic_data_types: env.types.into_iter().collect(),
-            definitions,
-        })
-    } else {
-        Err(StepFailedError {
-            compiler_pass: CompilerPass::TypeChecking,
-
-            // this is safe, because we never use the `ctx.errors` after the call to `lower_file`
-            // and we never use the `ctx` after the call to `lower_file`
-            errors: unsafe { std::mem::take(&mut *env.errors.as_ptr()) },
-        })?
     }
 }

@@ -1,17 +1,19 @@
+#![feature(box_patterns)]
+
 use std::cell::Cell;
 
-use crate::{
+use beml_tree::{
     concr::{File, Term},
-    errors::{CompilerPass, StepFailedError},
-    lexer::Token,
+    errors::{parser::*, CompilerPass, StepFailedError},
     loc::{Loc, Source},
 };
 
-pub mod errors;
-pub mod grammar;
+use crate::lexer::Token;
 
-use errors::*;
 use logos::Logos;
+
+pub mod grammar;
+pub mod lexer;
 
 /// Transforms the tokens into a concrete syntax tree.
 pub struct Parser<'a> {
@@ -64,12 +66,37 @@ pub fn parse_file(source: Source) -> miette::Result<File> {
     }
 }
 
+macro_rules! recover {
+    ($p:expr, $expr:expr) => {
+        match $expr {
+            Ok(value) => value,
+            Err(err) => match err.downcast_ref::<Eof>() {
+                Some(_) => return miette::IntoDiagnostic::into_diagnostic(Err(Eof)),
+                None => {
+                    $p.report(err);
+                    $p.bump();
+                    Term::Error
+                }
+            },
+        }
+    };
+}
+
+macro_rules! expect_or_bail {
+    ($p:expr, $token:expr) => {
+        if let None = $p.expect($token) {
+            $p.bump();
+            return Ok(Term::Error);
+        }
+    };
+}
+
 impl<'a> Parser<'a> {
     pub fn report(&mut self, error: miette::Report) {
         self.errors.push(error.with_source_code(self.data.clone()));
     }
 
-    pub fn expect(&mut self, token: Token) -> Option<(String, crate::loc::Loc)> {
+    pub fn expect(&mut self, token: Token) -> Option<(String, beml_tree::loc::Loc)> {
         let tok = { self.eat(token).map(|(text, loc)| (text.to_string(), loc)) };
         match tok {
             Ok(value) => Some(value),
@@ -87,7 +114,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn eat(&mut self, token: Token) -> miette::Result<(&str, crate::loc::Loc)> {
+    pub fn eat(&mut self, token: Token) -> miette::Result<(&str, beml_tree::loc::Loc)> {
         let range = self.lexer.span();
         let text = self.lexer.slice();
         let span = Loc::Loc {
@@ -100,9 +127,9 @@ impl<'a> Parser<'a> {
             Ok((text, span))
         } else {
             Err(ExpectedToken {
-                token,
+                token: token.to_string(),
                 span,
-                actual: self.curr.unwrap_or(Token::Skip),
+                actual: self.curr.unwrap_or(Token::Skip).to_string(),
                 source_code: self.data.clone(),
             })?
         }
@@ -116,8 +143,8 @@ impl<'a> Parser<'a> {
             path: self.data.clone(),
         };
         Err(UnexpectedToken {
-            actual: self.curr.unwrap_or(Token::Skip),
-            possibilities: possibilities.to_vec(),
+            actual: self.curr.unwrap_or(Token::Skip).to_string(),
+            possibilities: possibilities.iter().map(|t| t.to_string()).collect(),
             span,
             source_code: self.data.clone(),
         })?
@@ -132,7 +159,7 @@ impl<'a> Parser<'a> {
     }
 
     #[allow(clippy::should_implement_trait)]
-    pub fn next(&mut self) -> miette::Result<(Token, &str, crate::loc::Loc)> {
+    pub fn next(&mut self) -> miette::Result<(Token, &str, beml_tree::loc::Loc)> {
         self.bump();
         let Some(token) = self.curr else {
             return Err(Eof)?;
@@ -193,6 +220,8 @@ macro_rules! close {
 }
 
 pub(crate) use close;
+pub(crate) use expect_or_bail;
+pub(crate) use recover;
 
 #[cfg(test)]
 mod tests {
@@ -200,7 +229,7 @@ mod tests {
 
     #[test]
     fn test_val() {
-        crate::aux::golden_test! {
+        beml_tree::golden_test! {
             expected:
 r#"Ok(
     File {
@@ -281,7 +310,7 @@ r#"Ok(
 
     #[test]
     fn test_type() {
-        crate::aux::golden_test! {
+        beml_tree::golden_test! {
             expected:
 r#"Ok(
     File {
@@ -445,7 +474,7 @@ r#"Ok(
 
     #[test]
     fn test_let() {
-        crate::aux::golden_test! {
+        beml_tree::golden_test! {
             expected:
 r#"Ok(
     File {
