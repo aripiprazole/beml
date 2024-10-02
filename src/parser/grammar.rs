@@ -370,12 +370,17 @@ fn primary(p: &mut Parser, level: Lvl) -> miette::Result<Term> {
 
 fn group_by<F>(p: &mut Parser, l: Lvl, initial: Token, end: Token, f: F) -> miette::Result<Term>
 where
-    F: FnOnce(Box<Term>) -> Term, {
+    F: FnOnce(Option<Box<Term>>) -> Term, {
     if p.check(initial) {
         p.eat(initial)?;
-        let term = recover!(p, expr(p, l, &[end]));
-        expect_or_bail!(p, end);
-        Ok(f(term.into()))
+        if p.check(end) {
+            p.bump();
+            Ok(f(None))
+        } else {
+            let term = recover!(p, expr(p, l, &[end]));
+            expect_or_bail!(p, end);
+            Ok(f(Some(term.into())))
+        }
     } else {
         Ok(recover!(p, p.unexpected_token(EXPR_FIRST)))
     }

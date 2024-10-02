@@ -87,8 +87,8 @@ pub struct Constructor {
 #[derive(Debug)]
 pub enum Term {
     SrcPos(Box<Term>, crate::loc::Loc),
-    Parens(Box<Term>),
-    Brackets(Box<Term>),
+    Parens(Option<Box<Term>>),
+    Brackets(Option<Box<Term>>),
     Braces(Box<Term>),
     TypeDecl(TypeDecl),
     LetDecl(LetDecl),

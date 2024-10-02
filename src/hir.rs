@@ -425,6 +425,7 @@ impl Debug for Type {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Type::Any => write!(f, "*"),
+            Type::Pair(elements) if elements.is_empty() => write!(f, "unit"),
             Type::Pair(elements) => write!(f, "{:?}", Join(elements, " * ")),
             Type::Tuple(elements) => write!(f, "({:?})", Join(elements, ", ")),
             Type::Fun(box domain, box codomain) => write!(f, "({:?} -> {:?})", domain, codomain),

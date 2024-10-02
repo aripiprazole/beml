@@ -68,7 +68,7 @@ pub fn lower_term(mut ctx: LoweringCtx, term: Term) -> miette::Result<abstr::Ter
             box body,
             box next,
         }) => {
-            let pattern = pat::lower_pattern(&mut ctx, pattern)?;
+            let pattern = pat::lower_pat(&mut ctx, pattern)?;
             let mut ctx = ctx.clone();
 
             let mut fun_type = abstr::Type::Hole;
@@ -101,7 +101,7 @@ pub fn lower_term(mut ctx: LoweringCtx, term: Term) -> miette::Result<abstr::Ter
         }
 
         // [x, y, z]
-        Brackets(box elements) => {
+        Brackets(Some(box elements)) => {
             let elements = ctx
                 .sep_by(BinOp::Comma, elements)?
                 .into_iter()
@@ -109,9 +109,10 @@ pub fn lower_term(mut ctx: LoweringCtx, term: Term) -> miette::Result<abstr::Ter
                 .collect::<Vec<_>>();
             Ok(abstr::List(elements))
         }
+        Brackets(None) => Ok(abstr::List(vec![])), // []
 
         // (x, y, z, ..)
-        Parens(value @ box BinOp(_, BinOp::Comma, _) | value @ box SrcPos(box BinOp(_, BinOp::Comma, _), _)) => {
+        Parens(Some(value @ box BinOp(_, BinOp::Comma, _) | value @ box SrcPos(box BinOp(_, BinOp::Comma, _), _))) => {
             let elements = ctx
                 .sep_by(BinOp::Comma, *value)?
                 .into_iter()
@@ -119,8 +120,8 @@ pub fn lower_term(mut ctx: LoweringCtx, term: Term) -> miette::Result<abstr::Ter
                 .collect::<Vec<_>>();
             Ok(abstr::Pair(elements))
         }
-
-        Parens(box value) => lower_term(ctx, value), // (x)
+        Parens(None) => Ok(abstr::Pair(vec![])),           // () or unit
+        Parens(Some(box value)) => lower_term(ctx, value), // (x)
 
         Text(crate::loc::Text { value, loc }) => Ok(abstr::Text(crate::loc::Text { value, loc })),
 
@@ -163,7 +164,7 @@ pub fn lower_type(mut ctx: LoweringCtx, term: Term) -> miette::Result<abstr::Typ
             }
             Ok(abstr::Type::App(callee, argument.into()))
         }
-        Parens(box type_repr) => {
+        Parens(Some(box type_repr)) => {
             if let BinOp(_, BinOp::Comma, _) = type_repr {
                 let type_repr = ctx
                     .sep_by(BinOp::Comma, type_repr)?
@@ -208,7 +209,7 @@ pub fn lower_parameter(ctx: &mut LoweringCtx, parameter: Term) -> miette::Result
             ctx.src_pos = loc;
             lower_parameter(ctx, term)
         }
-        Parens(box BinOp(box Var(name), BinOp::Colon, box type_repr)) => {
+        Parens(Some(box BinOp(box Var(name), BinOp::Colon, box type_repr))) => {
             let name = ctx.new_variable(name);
             let type_repr = lower_type(ctx.clone(), type_repr)?;
             Ok((abstr::Variable(name), type_repr))
@@ -223,11 +224,11 @@ pub fn lower_parameter(ctx: &mut LoweringCtx, parameter: Term) -> miette::Result
 pub mod pat {
     use super::*;
 
-    pub fn lower_pattern(ctx: &mut LoweringCtx, case: Term) -> miette::Result<abstr::Pattern> {
+    pub fn lower_pat(ctx: &mut LoweringCtx, case: Term) -> miette::Result<abstr::Pattern> {
         match case {
             SrcPos(box term, loc) => {
                 ctx.src_pos = loc.clone();
-                Ok(abstr::PatternSrcPos(lower_pattern(ctx, term)?.into(), loc))
+                Ok(abstr::PatternSrcPos(lower_pat(ctx, term)?.into(), loc))
             }
             Var(name) if name.text.chars().next().unwrap().is_uppercase() => {
                 Ok(match ctx.lookup_constructor(name.clone()) {
@@ -244,7 +245,7 @@ pub mod pat {
             }
             Var(name) => Ok(abstr::Variable(ctx.new_variable(name))),
             App(box term, box arg) => {
-                let term = lower_pattern(ctx, term)
+                let term = lower_pat(ctx, term)
                     .map_err(|error| PatternConstructorAppError { error })
                     .into_diagnostic()?;
                 let (name, parameters) = match term {
@@ -257,16 +258,17 @@ pub mod pat {
                     ctx.report_error(PatternArgumentAlreadyExistsError);
                 }
 
-                let parameters = lower_pattern(ctx, arg)?;
+                let parameters = lower_pat(ctx, arg)?;
 
                 Ok(abstr::Constructor(name, Some(parameters.into())))
             }
-            Parens(box varargs) => Ok(abstr::Elements(
+            Parens(Some(box varargs)) => Ok(abstr::Elements(
                 ctx.sep_by(BinOp::Comma, varargs)?
                     .into_iter()
-                    .map(|term| lower_pattern(ctx, term))
+                    .map(|term| lower_pat(ctx, term))
                     .collect::<miette::Result<Vec<_>>>()?,
             )),
+            Parens(None) => Ok(abstr::Elements(vec![])),
             _ => {
                 ctx.report_error(UnexpectedPatternSyntaxError);
                 let definition = ctx.new_variable(Identifier::new("_", ctx.src_pos.clone()));
@@ -284,7 +286,7 @@ pub mod pat {
                 lower_case(ctx, term)
             }
             BinOp(box pattern, BinOp::DoubleArrow, box body) => {
-                let pattern = lower_pattern(&mut ctx, pattern)?;
+                let pattern = lower_pat(&mut ctx, pattern)?;
                 let body = lower_term(ctx, body)?;
                 Ok(abstr::Case { pattern, body })
             }
@@ -338,7 +340,7 @@ pub mod decl {
                 parameters,
             }) => {
                 let src_pos = ctx.src_pos.clone();
-                let pattern = pat::lower_pattern(ctx, pattern)?;
+                let pattern = pat::lower_pat(ctx, pattern)?;
 
                 Defer(Box::new(|ctx| {
                     let mut fun_type = abstr::Type::Hole;
@@ -371,7 +373,7 @@ pub mod decl {
                         _ => {
                             let new_var = ctx.new_fresh_variable();
                             Ok(abstr::Decl::LetDecl(abstr::LetDecl {
-                                def: ctx.new_fresh_variable(),
+                                def: new_var.clone(),
                                 type_repr: fun_type,
                                 body: abstr::Value(abstr::Match(body.into(), vec![abstr::Case {
                                     pattern,
