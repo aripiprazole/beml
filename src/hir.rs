@@ -11,7 +11,11 @@ use std::{
 use fxhash::FxBuildHasher;
 
 use crate::{
-    abstr::{errors::UnificationError, typing::TypeEnv, Definition, Reference},
+    abstr::{
+        errors::{IncorrectTypeArityError, TypeDontHaveArgumentError, UnificationError},
+        typing::TypeEnv,
+        Definition, Reference,
+    },
     loc::Loc,
 };
 
@@ -146,9 +150,25 @@ pub fn fun_type(domain: &Type, codomain: &Type) -> Type {
     Type::Fun(domain.clone().into(), codomain.clone().into())
 }
 
-pub fn app_type(env: &TypeEnv, name: Reference, argument: Type) -> Type {
-    let _ = env; // TODO: check arity
-    Type::App(name, argument.into())
+pub fn app_type(env: &TypeEnv, reference: Reference, arg: Type) -> Type {
+    let adt = env.types.get(&reference.name.text).expect("type not found");
+    match (adt.arity, arg) {
+        (0, arg) => {
+            env.report(TypeDontHaveArgumentError { type_repr: arg });
+
+            Type::Constructor(reference)
+        }
+        (1, arg) if !matches!(arg, Type::Tuple(_)) => Type::App(reference, arg.into()),
+        (_, Type::Tuple(elements)) if adt.arity == elements.len() => Type::App(reference, Type::Tuple(elements).into()),
+        (_, arg) => {
+            env.report(IncorrectTypeArityError {
+                arity: adt.arity,
+                type_repr: arg,
+            });
+
+            Type::Constructor(reference)
+        }
+    }
 }
 
 /// Type scheme. It's the polymorphic type of a term in the HIR.
@@ -189,7 +209,7 @@ pub struct Value {
 pub struct File {
     pub path: PathBuf,
     pub algebraic_data_types: im_rc::HashMap<String, Rc<AlgebraicDataType>, FxBuildHasher>,
-    pub definitions: im::HashMap<String, Term, FxBuildHasher>,
+    pub definitions: im::HashMap<String, Value, FxBuildHasher>,
 }
 
 /// A variable is a mutable reference to a type. It is used to represent
@@ -302,7 +322,7 @@ impl Type {
                 Self::new_with_args(vars, env, domain).into(),
                 Self::new_with_args(vars, env, codomain).into(),
             ),
-            App(name, box argument) => Type::App(name, Self::new_with_args(vars, env, argument).into()),
+            App(name, box argument) => app_type(env, name, Self::new_with_args(vars, env, argument)),
             Local(box local) => Type::Local(Self::new_with_args(vars, env, local).into()),
             Meta(id) => vars
                 .get(&id.text)

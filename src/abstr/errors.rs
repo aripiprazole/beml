@@ -3,6 +3,25 @@ use crate::hir::Type;
 use super::Reference;
 
 #[derive(Debug, thiserror::Error, miette::Diagnostic)]
+#[error("unresolved variable: {name}")]
+pub struct UnresolvedVariableError {
+    pub name: String,
+}
+
+#[derive(Debug, thiserror::Error, miette::Diagnostic)]
+#[error("type has wrong arity: expected {arity} with {type_repr:?}")]
+pub struct IncorrectTypeArityError {
+    pub arity: usize,
+    pub type_repr: Type,
+}
+
+#[derive(Debug, thiserror::Error, miette::Diagnostic)]
+#[error("type don't have argument: {type_repr:?}")]
+pub struct TypeDontHaveArgumentError {
+    pub type_repr: Type,
+}
+
+#[derive(Debug, thiserror::Error, miette::Diagnostic)]
 #[error("incompatible pattern type")]
 pub struct IncompatiblePatternTypeError;
 

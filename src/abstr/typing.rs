@@ -1,5 +1,6 @@
 use std::cell::Cell;
 
+use errors::UnresolvedVariableError;
 use fxhash::FxBuildHasher;
 use miette::NamedSource;
 
@@ -10,12 +11,6 @@ use crate::{
 };
 
 use super::*;
-
-#[derive(Debug, thiserror::Error, miette::Diagnostic)]
-#[error("unresolved variable: {name}")]
-pub struct UnresolvedVariableError {
-    pub name: String,
-}
 
 #[derive(Clone)]
 pub struct TypeEnv {
@@ -195,7 +190,7 @@ pub(crate) mod decl {
     use super::*;
 
     #[allow(clippy::type_complexity)]
-    pub struct Defer(pub Box<dyn FnOnce(&mut TypeEnv) -> Option<hir::Term>>);
+    pub struct Defer(pub Box<dyn FnOnce(&mut TypeEnv) -> Option<hir::Value>>);
 
     pub fn infer_decl(env: &mut TypeEnv, decl: Decl) -> Defer {
         match decl {
@@ -268,8 +263,11 @@ pub(crate) mod decl {
                 Defer(Box::new(move |env| {
                     let value = infer(env, term);
                     let type_repr = value.type_repr.clone().generalize();
-                    env.assumptions.insert(decl.def.name.text.clone(), type_repr);
-                    Some(value)
+                    env.assumptions.insert(decl.def.name.text.clone(), type_repr.clone());
+                    Some(hir::Value {
+                        scheme: type_repr,
+                        value,
+                    })
                 }))
             }
         }
