@@ -24,7 +24,7 @@ mod rules;
 #[derive(Debug)]
 pub struct TypeDecl {
     pub name: Identifier,
-    pub variable: Box<Term>,
+    pub variable: Option<Box<Term>>,
     pub cases: Vec<Term>,
 }
 

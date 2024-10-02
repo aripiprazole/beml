@@ -75,7 +75,11 @@ fn val_decl(p: &mut Parser) -> miette::Result<Term> {
 
 fn type_decl(p: &mut Parser) -> miette::Result<Term> {
     expect_or_bail!(p, Token::Type);
-    let variable = recover!(p, expr(p, Lvl::Type, &[Token::Ident]));
+    let variable = if p.at_any(&[Token::Meta, Token::LParen]) {
+        Some(recover!(p, expr(p, Lvl::Type, &[Token::Ident])))
+    } else {
+        None
+    };
     let name = identifier(p)?;
     expect_or_bail!(p, Token::Equals);
     if p.check(Token::Bar) {
@@ -91,7 +95,7 @@ fn type_decl(p: &mut Parser) -> miette::Result<Term> {
     Ok(TypeDecl(TypeDecl {
         name,
         cases,
-        variable: variable.into(),
+        variable: variable.map(Box::new),
     }))
 }
 

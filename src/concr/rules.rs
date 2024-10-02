@@ -315,14 +315,13 @@ pub mod decl {
                 ctx.src_pos = loc;
                 return lower_decl(ctx, term);
             }
-            TypeDecl(TypeDecl {
-                name,
-                box variable,
-                cases,
-            }) => {
+            TypeDecl(TypeDecl { name, variable, cases }) => {
                 let src_pos = ctx.src_pos.clone();
                 let name = ctx.new_type(name);
-                let variables = lower_type_parameter(ctx, variable);
+                let variables = match variable {
+                    Some(box variable) => lower_type_parameter(ctx, variable),
+                    None => vec![],
+                };
                 let cases = lower_constructors(ctx, cases);
 
                 Defer(Box::new(|_| {

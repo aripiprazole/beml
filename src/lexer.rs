@@ -79,7 +79,7 @@ pub enum Token {
     LBrace,
     #[token("}")]
     RBrace,
-    #[token(r"[+-*/><=,!:]+")]
+    #[token(r"[|+-*/><=,!:]+")]
     Infix,
     #[regex("//.*", logos::skip)]
     #[token("(*", lex_block_comment)]
