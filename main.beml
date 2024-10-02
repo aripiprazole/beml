@@ -7,3 +7,5 @@ val (+) : int -> int -> int
 let map f = function
   | Nil => Nil
   | Cons (x, xs) => Cons (f x, map f xs)
+
+let _ = map (fun x -> x + 10) Nil

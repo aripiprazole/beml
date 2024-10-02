@@ -141,11 +141,12 @@ impl LoweringCtx {
             .ok_or(UnresolvedTypeError { name: name.text })
     }
 
-    pub fn lookup(&self, name: Identifier) -> Result<Arc<abstr::Definition>, UnresolvedSymbolError> {
+    pub fn lookup(&self, name: Identifier) -> miette::Result<Arc<abstr::Definition>> {
         self.lookup_constructor(name.clone())
             .map_err(UnresolvedSymbolError::UnresolvedConstructorError)
             .or_else(|_| self.lookup_variable(name))
             .map_err(UnresolvedSymbolError::UnresolvedVariableError)
+            .map_err(|err| self.wrap_error::<(), _>(err).unwrap_err())
     }
 
     pub fn lookup_constructor(&self, name: Identifier) -> Result<Arc<abstr::Definition>, UnresolvedConstructorError> {

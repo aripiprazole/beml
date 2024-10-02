@@ -273,8 +273,11 @@ fn fun_expr(p: &mut Parser) -> miette::Result<Term> {
     expect_or_bail!(p, Token::Fun);
     let mut parameters = vec![];
     while p.check(Token::Ident) {
-        let (_, text, loc) = p.next()?;
-        parameters.push(crate::loc::Identifier { text: text.into(), loc })
+        parameters.push(crate::loc::Identifier {
+            text: p.text().into(),
+            loc: p.loc(),
+        });
+        p.bump();
     }
     expect_or_bail!(p, Token::Arrow);
     let body = recover!(p, expr(p, Lvl::Term, &[]));
