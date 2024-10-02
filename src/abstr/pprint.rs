@@ -78,7 +78,7 @@ impl Debug for PrettyPrint<'_, Term> {
 impl Debug for PrettyPrint<'_, Type> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.0 {
-            Type::SrcPos(box t, _) => t.fmt(f),
+            Type::SrcPos(box t, _) => t.pretty_print().fmt(f),
             Type::Pair(elements) => {
                 write!(f, "(")?;
                 for (i, e) in elements.iter().enumerate() {
@@ -106,8 +106,7 @@ impl Debug for PrettyPrint<'_, Type> {
             }
             Type::App(callee, box argument) => {
                 argument.pretty_print().fmt(f)?;
-                write!(f, " ")?;
-                callee.fmt(f)
+                write!(f, " {}", callee.name.text)
             }
             Type::Local(box value) => {
                 value.pretty_print().fmt(f)?;

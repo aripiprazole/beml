@@ -22,8 +22,8 @@ pub struct TypeEnv {
     pub(crate) file: PathBuf,
     pub(crate) text: String,
     pub(crate) src_pos: Loc,
-    pub(crate) types: im_rc::HashMap<String, hir::AlgebraicDataType, FxBuildHasher>,
-    pub(crate) constructors_to_types: im_rc::HashMap<String, hir::Scheme, FxBuildHasher>,
+    pub(crate) types: im_rc::HashMap<String, Rc<hir::AlgebraicDataType>, FxBuildHasher>,
+    pub(crate) constructors_to_types: im_rc::HashMap<String, Rc<hir::AlgebraicDataType>, FxBuildHasher>,
     pub(crate) assumptions: im_rc::HashMap<String, hir::Scheme, FxBuildHasher>,
     pub(crate) errors: Rc<RefCell<Vec<miette::Report>>>,
     pub(crate) counter: Rc<Cell<usize>>,
@@ -200,62 +200,53 @@ pub(crate) mod decl {
     pub fn infer_decl(env: &mut TypeEnv, decl: Decl) -> Defer {
         match decl {
             Decl::TypeDecl(decl) => {
-                env.src_pos = decl.loc.clone();
-                env.types.insert(decl.def.name.text.clone(), hir::AlgebraicDataType {
+                let mut vars = HashMap::default();
+                let variables = decl
+                    .variables
+                    .clone()
+                    .into_iter()
+                    .map(|variable| {
+                        vars.entry(variable.text.clone())
+                            .or_insert_with(|| env.fresh_type_variable())
+                            .clone()
+                    })
+                    .collect::<Vec<_>>();
+                let scheme = match variables.as_slice() {
+                    [] => hir::Type::Constructor(decl.def.clone().use_reference()),
+                    [variable] => hir::Type::App(decl.def.clone().use_reference(), variable.clone().into()),
+                    _ => hir::Type::App(decl.def.clone().use_reference(), hir::Type::Tuple(variables).into()),
+                };
+                let adt = Rc::new(hir::AlgebraicDataType {
                     definition: decl.def.clone(),
                     arity: decl.variables.len(),
-                    constructors: Default::default(),
+                    scheme: scheme.clone().generalize(),
+                    constructors: RefCell::new(Default::default()),
                 });
 
+                env.src_pos = decl.loc.clone();
+                env.types.insert(decl.def.name.text.clone(), adt.clone());
+
                 Defer(Box::new(move |env| {
-                    let mut constructors = im_rc::HashMap::default();
-                    let mut vars = HashMap::new();
-                    let target_type = match decl.variables.len() {
-                        0 => hir::Type::Constructor(decl.def.clone().use_reference()),
-                        1 => hir::Type::App(decl.def.clone().use_reference(), env.fresh_type_variable().into()),
-                        _ => {
-                            let variables = decl
-                                .variables
-                                .clone()
-                                .into_iter()
-                                .map(|variable| {
-                                    vars.entry(variable.text.clone())
-                                        .or_insert_with(|| env.fresh_type_variable())
-                                        .clone()
-                                })
-                                .collect();
-
-                            hir::Type::App(decl.def.clone().use_reference(), hir::Type::Tuple(variables).into())
-                        }
-                    };
-
                     for Constructor { name: def, type_repr } in decl.cases {
-                        env.constructors_to_types
-                            .insert(def.name.text.clone(), target_type.clone().generalize());
-                        match type_repr {
-                            Some(type_repr) => {
-                                let type_repr = hir::Type::new(type_repr, env);
-                                constructors.insert(def.name.text.clone(), hir::Constructor {
-                                    type_repr: Some(type_repr.clone()),
-                                });
-                                env.assumptions.insert(
-                                    def.name.text.clone(),
-                                    hir::Type::Fun(type_repr.into(), target_type.clone().into()).generalize(),
-                                );
-                            }
-                            None => {
-                                env.assumptions
-                                    .insert(def.name.text.clone(), target_type.clone().generalize());
-                                constructors.insert(def.name.text.clone(), hir::Constructor { type_repr: None });
-                            }
+                        let constructor_name = def.name.text.clone();
+                        let mut constructors = adt.constructors.borrow_mut();
+                        env.constructors_to_types.insert(constructor_name.clone(), adt.clone());
+                        if let Some(type_repr) = type_repr {
+                            let type_repr = hir::Type::new_with_args(&vars, env, type_repr);
+                            let constructor_type = hir::fun_type(&type_repr, &scheme).generalize();
+                            env.assumptions.insert(def.name.text.clone(), constructor_type.clone());
+                            constructors.insert(constructor_name, hir::Constructor {
+                                type_repr: Some(type_repr),
+                                scheme: constructor_type,
+                            });
+                        } else {
+                            env.assumptions.insert(constructor_name, scheme.clone().generalize());
+                            constructors.insert(def.name.text.clone(), hir::Constructor {
+                                type_repr: None,
+                                scheme: scheme.clone().generalize(),
+                            });
                         }
                     }
-
-                    env.types.insert(decl.def.name.text.clone(), hir::AlgebraicDataType {
-                        definition: decl.def.clone(),
-                        arity: decl.variables.len(),
-                        constructors,
-                    });
 
                     None
                 }))
@@ -276,8 +267,8 @@ pub(crate) mod decl {
 
                 Defer(Box::new(move |env| {
                     let value = infer(env, term);
-                    env.unify_catch(&h, &value);
-                    env.assumptions.insert(decl.def.name.text.clone(), Scheme::new(h));
+                    let type_repr = value.type_repr.clone().generalize();
+                    env.assumptions.insert(decl.def.name.text.clone(), type_repr);
                     Some(value)
                 }))
             }
@@ -458,19 +449,36 @@ pub(crate) mod pat {
                 tt
             }
             Constructor(ref constructor, Some(box pat)) => {
-                let Some(hir_type) = env.constructors_to_types.get(&constructor.name.text).cloned() else {
+                let Some(adt) = env.constructors_to_types.get(&constructor.name.text).cloned() else {
                     env.report(IncompatiblePatternTypeError);
+                    return hir::Type::Any;
+                };
+                let Some(hir::Constructor { scheme, .. }) = adt.get(&constructor.name.text) else {
+                    env.report(UnresolvedConstructorError {
+                        name: constructor.name.text.clone(),
+                    });
                     return hir::Type::Any;
                 };
 
-                hir_type.apply(infer_pat(env, ctx, pat), env)
+                let scheme_type = adt.scheme.instantiate(env);
+                let fun_type = hir::fun_type(&infer_pat(env, ctx, pat), &scheme_type);
+                env.unify_catch(&fun_type, &scheme.instantiate(env));
+                scheme_type
             }
             Constructor(ref constructor, None) => {
-                let Some(hir_type) = env.constructors_to_types.get(&constructor.name.text).cloned() else {
+                let Some(adt) = env.constructors_to_types.get(&constructor.name.text).cloned() else {
                     env.report(IncompatiblePatternTypeError);
                     return hir::Type::Any;
                 };
-                hir_type.instantiate(env)
+                let Some(hir::Constructor { scheme, .. }) = adt.get(&constructor.name.text) else {
+                    env.report(UnresolvedConstructorError {
+                        name: constructor.name.text.clone(),
+                    });
+                    return hir::Type::Any;
+                };
+                let tt = scheme.instantiate(env);
+                env.unify_catch(&tt, &adt.scheme.instantiate(env));
+                tt
             }
             Elements(elements) => hir::Type::Pair(
                 elements
@@ -487,45 +495,6 @@ pub(crate) mod pat {
             (PatternSrcPos(box pat, src_pos), expected) => {
                 env.src_pos = src_pos;
                 check_pat(env, ctx, pat, expected)
-            }
-            (Constructor(constructor, argument), hir::Type::Hole(type_repr)) => {
-                let Some(hir_type) = env.constructors_to_types.get(&constructor.name.text).cloned() else {
-                    env.report(IncompatiblePatternTypeError);
-                    return hir::Type::Any;
-                };
-
-                let hir_type = hir_type.instantiate(env);
-                let new_type_repr = check_pat(env, ctx, Constructor(constructor, argument), hir_type);
-                type_repr.update(new_type_repr.clone());
-                new_type_repr
-            }
-            (Constructor(constructor, None), hir::Type::Constructor(type_repr)) => {
-                let Some(hir::AlgebraicDataType { constructors, .. }) = env.types.get(&type_repr.name.text) else {
-                    env.report(IncompatiblePatternTypeError);
-                    return hir::Type::Constructor(type_repr);
-                };
-                let Some(hir::Constructor { type_repr: None, .. }) = constructors.get(&constructor.name.text) else {
-                    env.report(UnresolvedConstructorError);
-                    return hir::Type::Constructor(type_repr);
-                };
-
-                hir::Type::Constructor(type_repr)
-            }
-            (Constructor(constructor, Some(box pat)), hir::Type::Constructor(type_repr)) => {
-                let Some(hir::AlgebraicDataType { constructors, .. }) = env.types.get(&type_repr.name.text) else {
-                    env.report(IncompatiblePatternTypeError);
-                    return hir::Type::Constructor(type_repr);
-                };
-                let Some(hir::Constructor {
-                    type_repr: Some(expected),
-                    ..
-                }) = constructors.get(&constructor.name.text)
-                else {
-                    env.report(UnresolvedConstructorError);
-                    return hir::Type::Constructor(type_repr);
-                };
-
-                hir::Type::App(type_repr, check_pat(env, ctx, pat, expected.clone()).into())
             }
             (Elements(elements), hir::Type::Pair(element_types)) => {
                 let elements = elements
@@ -555,20 +524,9 @@ pub(crate) mod pat {
 
         #[test]
         fn test_specialize() {
-            let mut env = TypeEnv::new(Default::default(), Default::default());
+            let env = TypeEnv::new(Default::default(), Default::default());
             let cons = Definition::new("Cons");
             let nil = Definition::new("Nil");
-
-            env.types.insert("int".into(), hir::AlgebraicDataType {
-                definition: Definition::new("int"),
-                arity: 0,
-                constructors: Default::default(),
-            });
-            env.types.insert("list".into(), hir::AlgebraicDataType {
-                definition: Definition::new("list"),
-                arity: 0,
-                constructors: Default::default(),
-            });
 
             let scrutinee = infer(&env, Term::List(vec![]));
             dbg!(specialize(scrutinee, vec![
@@ -606,27 +564,40 @@ pub(crate) mod pat {
 impl TypeEnv {
     pub fn new(file: PathBuf, text: String) -> Self {
         let mut types = im_rc::HashMap::default();
-        types.insert("int".into(), hir::AlgebraicDataType {
-            definition: Definition::new("int"),
-            arity: 0,
-            constructors: Default::default(),
-        });
-        types.insert("string".into(), hir::AlgebraicDataType {
-            definition: Definition::new("string"),
-            arity: 0,
-            constructors: Default::default(),
-        });
-        types.insert("bool".into(), hir::AlgebraicDataType {
-            definition: Definition::new("bool"),
-            arity: 0,
-            constructors: Default::default(),
-        });
+        types.insert(
+            "int".into(),
+            Rc::new(hir::AlgebraicDataType {
+                definition: Definition::new("int"),
+                arity: 0,
+                scheme: hir::Scheme::new(hir::Type::Constructor(Definition::new("int").use_reference())),
+                constructors: Default::default(),
+            }),
+        );
+        types.insert(
+            "string".into(),
+            Rc::new(hir::AlgebraicDataType {
+                definition: Definition::new("string"),
+                arity: 0,
+                scheme: hir::Scheme::new(hir::Type::Constructor(Definition::new("string").use_reference())),
+                constructors: Default::default(),
+            }),
+        );
+        types.insert(
+            "bool".into(),
+            Rc::new(hir::AlgebraicDataType {
+                definition: Definition::new("bool"),
+                arity: 0,
+                scheme: hir::Scheme::new(hir::Type::Constructor(Definition::new("bool").use_reference())),
+                constructors: Default::default(),
+            }),
+        );
         Self {
             file,
             text,
             src_pos: Loc::Nowhere,
             types,
             constructors_to_types: Default::default(),
+
             assumptions: Default::default(),
             errors: Rc::new(RefCell::new(vec![])),
             counter: Rc::new(Cell::new(0)),
@@ -636,7 +607,7 @@ impl TypeEnv {
     pub fn fresh_type_variable(&self) -> hir::Type {
         let idx = self.counter.get();
         self.counter.set(idx + 1);
-        hir::Type::Hole(hir::Variable::new(self.counter.get()))
+        hir::Type::Flexible(hir::Variable::new(self.counter.get()))
     }
 
     pub fn get_type(&self, name: &str) -> Reference {
@@ -645,6 +616,7 @@ impl TypeEnv {
             .unwrap_or_else(|| panic!("intrinsic type {name} not found"))
             .clone()
             .definition
+            .clone()
             .use_reference()
     }
 
@@ -663,7 +635,10 @@ impl TypeEnv {
     }
 
     pub fn unify_catch<A: Typeable, B: Typeable>(&self, lhs: &A, rhs: &B) {
-        if let Err(err) = lhs.type_of().unify(rhs.type_of()) {
+        let lhs = lhs.type_of();
+        let rhs = rhs.type_of();
+        tracing::trace!("unify_catch: {:?}, {:?}", lhs, rhs);
+        if let Err(err) = lhs.unify(rhs) {
             self.report(err);
         }
     }

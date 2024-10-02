@@ -1,6 +1,6 @@
 use std::{
     cell::RefCell,
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fmt::Debug,
     hash::Hash,
     path::PathBuf,
@@ -83,6 +83,34 @@ pub enum Type {
     Meta(crate::loc::Identifier), // 'a | _
     Constructor(Reference),       //  C
     Hole,
+}
+
+impl Type {
+    /// Computes the free type variables of a type.
+    pub fn ftv(&self) -> HashSet<String, FxBuildHasher> {
+        fn go(vars: &mut HashSet<String, FxBuildHasher>, value: &Type) {
+            use Type::*;
+            match value {
+                SrcPos(box term, _) => go(vars, term),
+                Pair(elements) => elements.iter().for_each(|element| go(vars, element)),
+                Tuple(elements) => elements.iter().for_each(|element| go(vars, element)),
+                Fun(box domain, box codomain) => {
+                    go(vars, domain);
+                    go(vars, codomain);
+                }
+                App(_, box argument) => go(vars, argument),
+                Local(box local) => go(vars, local),
+                Meta(id) => {
+                    vars.insert(id.text.clone());
+                }
+                Constructor(_) | Hole => {}
+            }
+        }
+
+        let mut vars = HashSet::default();
+        go(&mut vars, self);
+        vars
+    }
 }
 
 #[derive(Debug, Clone)]

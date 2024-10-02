@@ -1,8 +1,10 @@
 use std::{
+    cell::RefCell,
     collections::HashMap,
     fmt::Debug,
     hash::Hash,
     path::PathBuf,
+    rc::Rc,
     sync::{Arc, RwLock},
 };
 
@@ -133,11 +135,11 @@ pub enum Type {
     App(Reference, Box<Type>), // 'a list | ('a, 'b) hashmap
     Local(Box<Type>),          // 'a local - linear types
     Constructor(Reference),    //  C
-    Meta(usize),
+    Rigid(String),
 
     /// Miette use Send + Sync, so we need to use Arc, to be thread safe
     /// and able to send it between threads.
-    Hole(Variable),
+    Flexible(Variable),
 }
 
 pub fn fun_type(domain: &Type, codomain: &Type) -> Type {
@@ -152,20 +154,28 @@ pub fn app_type(env: &TypeEnv, name: Reference, argument: Type) -> Type {
 /// Type scheme. It's the polymorphic type of a term in the HIR.
 #[derive(Debug, Clone)]
 pub struct Scheme {
-    pub args: usize,
+    pub args: Vec<String>,
     pub mono: Type,
 }
 
 #[derive(Debug, Clone)]
 pub struct Constructor {
     pub type_repr: Option<Type>,
+    pub scheme: Scheme,
 }
 
 #[derive(Debug, Clone)]
 pub struct AlgebraicDataType {
     pub definition: Arc<Definition>,
+    pub scheme: Scheme,
     pub arity: usize,
-    pub constructors: im_rc::HashMap<String, Constructor, FxBuildHasher>,
+    pub constructors: RefCell<im_rc::HashMap<String, Constructor, FxBuildHasher>>,
+}
+
+impl AlgebraicDataType {
+    pub fn get(&self, name: &str) -> Option<Constructor> {
+        self.constructors.borrow().get(name).cloned()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -178,7 +188,7 @@ pub struct Value {
 #[derive(Debug, Clone)]
 pub struct File {
     pub path: PathBuf,
-    pub algebraic_data_types: im::HashMap<String, AlgebraicDataType, FxBuildHasher>,
+    pub algebraic_data_types: im_rc::HashMap<String, Rc<AlgebraicDataType>, FxBuildHasher>,
     pub definitions: im::HashMap<String, Term, FxBuildHasher>,
 }
 
@@ -220,33 +230,38 @@ impl Hash for Variable {
 pub struct IncompatiblePatternTypeError;
 
 #[derive(Debug, thiserror::Error, miette::Diagnostic)]
-#[error("unresolved constructor")]
-pub struct UnresolvedConstructorError;
+#[error("unresolved constructor: {name}")]
+pub struct UnresolvedConstructorError {
+    pub name: String,
+}
 
 #[derive(Debug, thiserror::Error, miette::Diagnostic)]
 #[error("application pattern in constructor")]
 pub struct ApplicationPatternInConstructorError;
 
-#[derive(Debug, thiserror::Error, miette::Diagnostic)]
+#[derive(Debug, Clone, thiserror::Error, miette::Diagnostic)]
 #[error("unification error")]
 pub enum UnificationError {
-    #[error("incompatible types")]
+    #[error("incompatible types: {0:?} and {1:?}")]
     IncompatibleTypes(Type, Type),
 
     #[error("incompatible constructors")]
     IncompatibleConstructors(Reference, Reference),
 
-    #[error("occurs check")]
-    OccursCheck,
+    #[error("occurs check between {name} and {type_repr:?}")]
+    OccursCheck { name: String, type_repr: Type },
 }
 
 impl Scheme {
     pub fn new(value: Type) -> Scheme {
-        Scheme { args: 0, mono: value }
+        Scheme {
+            args: vec![],
+            mono: value,
+        }
     }
 
     pub fn instantiate(&self, env: &TypeEnv) -> Type {
-        fn go(holes: &HashMap<usize, Type>, tt: Type) -> Type {
+        fn go(holes: &HashMap<String, Type, FxBuildHasher>, tt: Type) -> Type {
             match tt {
                 Type::Any => Type::Any,
                 Type::Pair(elements) => Type::Pair(elements.into_iter().map(|element| go(holes, element)).collect()),
@@ -255,16 +270,16 @@ impl Scheme {
                 Type::App(n, box argument) => Type::App(n, go(holes, argument).into()),
                 Type::Local(box local) => Type::Local(go(holes, local).into()),
                 Type::Constructor(c) => Type::Constructor(c),
-                Type::Meta(idx) => holes
+                Type::Rigid(idx) => holes
                     .get(&idx)
                     .cloned()
                     .unwrap_or_else(|| panic!("can't index hole {idx}")),
-                Type::Hole(h) => Type::Hole(h),
+                Type::Flexible(h) => Type::Flexible(h),
             }
         }
-        let mut holes = HashMap::new();
-        for idx in 0..self.args {
-            holes.insert(idx, env.fresh_type_variable());
+        let mut holes = HashMap::default();
+        for idx in self.args.iter() {
+            holes.insert(idx.to_string(), env.fresh_type_variable());
         }
         go(&holes, self.mono.clone())
     }
@@ -283,55 +298,112 @@ impl Scheme {
 impl Type {
     pub fn force(self) -> Type {
         match self {
-            Type::Hole(h) => h.value().unwrap_or(Type::Any),
+            Type::Flexible(h) => h.value().unwrap_or(Type::Any),
             other => other,
         }
     }
 
-    pub fn new(abstr: crate::abstr::Type, env: &TypeEnv) -> Self {
-        fn go(vars: &mut HashMap<String, Type>, env: &TypeEnv, value: crate::abstr::Type) -> Type {
-            use crate::abstr::Type::*;
-            match value {
-                SrcPos(box term, _) => go(vars, env, term),
-                Pair(elements) => Type::Pair(elements.into_iter().map(|element| go(vars, env, element)).collect()),
-                Tuple(elements) => Type::Tuple(elements.into_iter().map(|element| go(vars, env, element)).collect()),
-                Fun(box domain, box codomain) => {
-                    Type::Fun(go(vars, env, domain).into(), go(vars, env, codomain).into())
+    pub fn replace(&mut self, name: &str, value: Type) {
+        use Type::*;
+        match self {
+            Pair(elements) | Tuple(elements) => {
+                for element in elements {
+                    element.replace(name, value.clone());
                 }
-                App(name, box argument) => Type::App(name, go(vars, env, argument).into()),
-                Local(box local) => Type::Local(go(vars, env, local).into()),
-                Meta(id) => vars.entry(id.text).or_insert_with(|| env.fresh_type_variable()).clone(),
-                Constructor(constructor) => Type::Constructor(constructor),
-                Hole => env.fresh_type_variable(),
             }
-        }
+            Fun(box domain, box codomain) => {
+                domain.replace(name, value.clone());
+                codomain.replace(name, value);
+            }
+            App(_, box argument) => {
+                argument.replace(name, value);
+            }
+            Local(box local) => {
+                local.replace(name, value);
+            }
+            Rigid(r) if r == name => {
+                *self = value;
+            }
+            Flexible(Variable(_, h)) => {
+                let hole_ref = &mut *h.write().unwrap();
 
-        go(&mut HashMap::new(), env, abstr)
+                if let Some(hole) = hole_ref.as_mut() {
+                    hole.replace(name, value);
+                }
+            }
+            Any | Constructor(_) | Rigid(_) => {}
+        }
+    }
+
+    pub fn new_with_args(vars: &HashMap<String, Type>, env: &TypeEnv, abstr: crate::abstr::Type) -> Self {
+        use crate::abstr::Type::*;
+        match abstr {
+            SrcPos(box term, _) => Self::new_with_args(vars, env, term),
+            Pair(elements) => Type::Pair(
+                elements
+                    .into_iter()
+                    .map(|element| Self::new_with_args(vars, env, element))
+                    .collect(),
+            ),
+            Tuple(elements) => Type::Tuple(
+                elements
+                    .into_iter()
+                    .map(|element| Self::new_with_args(vars, env, element))
+                    .collect(),
+            ),
+            Fun(box domain, box codomain) => Type::Fun(
+                Self::new_with_args(vars, env, domain).into(),
+                Self::new_with_args(vars, env, codomain).into(),
+            ),
+            App(name, box argument) => Type::App(name, Self::new_with_args(vars, env, argument).into()),
+            Local(box local) => Type::Local(Self::new_with_args(vars, env, local).into()),
+            Meta(id) => vars
+                .get(&id.text)
+                .unwrap_or_else(|| panic!("can't index hole {}", id.text))
+                .clone(),
+            Constructor(constructor) => Type::Constructor(constructor),
+            Hole => env.fresh_type_variable(),
+        }
+    }
+
+    /// Creates a new type from an abstract syntax tree.
+    pub fn new(abstr: crate::abstr::Type, env: &TypeEnv) -> Self {
+        let vars = abstr
+            .ftv()
+            .into_iter()
+            .map(|id| (id, env.fresh_type_variable()))
+            .collect();
+
+        Self::new_with_args(&vars, env, abstr)
     }
 
     pub fn generalize(self) -> Scheme {
-        fn go(vars: &mut HashMap<usize, usize>, value: Type) -> Type {
+        fn go(vars: &mut Vec<String>, value: Type) -> Type {
             use Type::*;
 
             match value {
-                Type::Any => Type::Any,
-                Pair(elements) => Type::Pair(elements.into_iter().map(|element| go(vars, element)).collect()),
-                Tuple(elements) => Type::Tuple(elements.into_iter().map(|element| go(vars, element)).collect()),
-                Fun(box domain, box codomain) => Type::Fun(go(vars, domain).into(), go(vars, codomain).into()),
-                App(name, box argument) => Type::App(name, go(vars, argument).into()),
-                Local(box local) => Type::Local(go(vars, local).into()),
-                Hole(Variable(idx, _)) => {
-                    let len = vars.len();
-                    Type::Meta(*vars.entry(idx).or_insert_with(|| len))
-                }
-                Constructor(constructor) => Type::Constructor(constructor),
-                Meta(m) => Type::Meta(m),
+                Any => Any,
+                Pair(elements) => Pair(elements.into_iter().map(|element| go(vars, element)).collect()),
+                Tuple(elements) => Tuple(elements.into_iter().map(|element| go(vars, element)).collect()),
+                Fun(box domain, box codomain) => Fun(go(vars, domain).into(), go(vars, codomain).into()),
+                App(name, box argument) => App(name, go(vars, argument).into()),
+                Local(box local) => Local(go(vars, local).into()),
+                Flexible(h @ Variable(idx, _)) => match h.value() {
+                    Some(value) => value,
+                    None => {
+                        let var = letters().nth(idx).unwrap().to_string();
+                        vars.push(var.clone());
+                        Rigid(var)
+                    }
+                },
+                Constructor(constructor) => Constructor(constructor),
+                Rigid(m) => Rigid(m),
             }
         }
 
-        let mut vars = HashMap::new();
-        let mono = go(&mut vars, self);
-        Scheme { args: vars.len(), mono }
+        let mut args = Vec::new();
+        let mono = go(&mut args, self);
+        Scheme { args, mono }
     }
 
     pub fn unify(self, rhs: Type) -> Result<(), UnificationError> {
@@ -360,10 +432,10 @@ impl Type {
                 }
                 Ok(())
             }
-            (Hole(h), value) | (value, Hole(h)) => match h.value() {
+            (Flexible(h), value) | (value, Flexible(h)) => match h.value() {
                 Some(contents) => contents.unify(value),
                 None => {
-                    value.pre_check(&h)?;
+                    value.pre_check(&h).unwrap();
                     h.update(value);
                     Ok(())
                 }
@@ -371,7 +443,7 @@ impl Type {
             (Constructor(lconstructor), Constructor(rconstructor)) => {
                 Err(IncompatibleConstructors(lconstructor, rconstructor))
             }
-            (lhs, rhs) => Err(IncompatibleTypes(lhs, rhs)),
+            (lhs, rhs) => Err(IncompatibleTypes(lhs, rhs)).unwrap(),
         }
     }
 
@@ -380,7 +452,10 @@ impl Type {
         use UnificationError::*;
 
         match self {
-            Hole(h) if h.0 == hole.0 => Err(OccursCheck),
+            Flexible(h) if h.0 == hole.0 => Err(OccursCheck {
+                name: letters().nth(h.0).unwrap().to_string(),
+                type_repr: self.clone(),
+            }),
             Pair(elements) | Tuple(elements) => {
                 for element in elements {
                     element.pre_check(hole)?;
@@ -422,11 +497,36 @@ impl Debug for Type {
             Type::App(reference, box argument) => write!(f, "{:?} {}", argument, reference.name.text),
             Type::Local(box local) => write!(f, "{:?}", local),
             Type::Constructor(constructor) => write!(f, "{}", constructor.name.text),
-            Type::Meta(idx) => write!(f, "?{}", idx),
-            Type::Hole(h) => match h.value() {
+            Type::Rigid(idx) => write!(f, "?{idx}"),
+            Type::Flexible(h) => match h.value() {
                 Some(v) => write!(f, "{:?}", v),
-                None => write!(f, "_"),
+                None => write!(f, "'{}", letters().nth(h.0).unwrap()),
             },
         }
     }
+}
+
+fn letters() -> impl Iterator<Item = String> {
+    fn combinations(n: usize, alphabet: &[char]) -> Vec<String> {
+        if n == 0 {
+            return vec![String::new()];
+        }
+
+        let mut result = vec![];
+        let smaller_combinations = combinations(n - 1, alphabet);
+
+        for comb in smaller_combinations {
+            for &letter in alphabet {
+                let mut new_comb = comb.clone();
+                new_comb.push(letter);
+                result.push(new_comb);
+            }
+        }
+
+        result
+    }
+
+    let alphabet: Vec<char> = ('a'..='z').collect();
+
+    (1..).flat_map(move |length| combinations(length, &alphabet).into_iter())
 }
