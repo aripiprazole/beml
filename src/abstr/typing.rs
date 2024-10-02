@@ -279,7 +279,7 @@ pub(crate) mod decl {
 /// Pattern inference, used for coverage checking and pattern checking
 /// in match expressions.
 pub(crate) mod pat {
-    use hir::{IncompatiblePatternTypeError, UnresolvedConstructorError};
+    use crate::abstr::errors::{IncompatiblePatternTypeError, UnresolvedConstructorError};
 
     use super::*;
 
@@ -561,36 +561,24 @@ pub(crate) mod pat {
     }
 }
 
+macro_rules! intrinsic_algebraic_data_type {
+    ($name:ident) => {{
+        let definition = Definition::new(stringify!($name));
+        Rc::new(hir::AlgebraicDataType {
+            definition: definition.clone(),
+            arity: 0,
+            scheme: hir::Scheme::new(hir::Type::Constructor(definition.use_reference())),
+            constructors: Default::default(),
+        })
+    }};
+}
+
 impl TypeEnv {
     pub fn new(file: PathBuf, text: String) -> Self {
         let mut types = im_rc::HashMap::default();
-        types.insert(
-            "int".into(),
-            Rc::new(hir::AlgebraicDataType {
-                definition: Definition::new("int"),
-                arity: 0,
-                scheme: hir::Scheme::new(hir::Type::Constructor(Definition::new("int").use_reference())),
-                constructors: Default::default(),
-            }),
-        );
-        types.insert(
-            "string".into(),
-            Rc::new(hir::AlgebraicDataType {
-                definition: Definition::new("string"),
-                arity: 0,
-                scheme: hir::Scheme::new(hir::Type::Constructor(Definition::new("string").use_reference())),
-                constructors: Default::default(),
-            }),
-        );
-        types.insert(
-            "bool".into(),
-            Rc::new(hir::AlgebraicDataType {
-                definition: Definition::new("bool"),
-                arity: 0,
-                scheme: hir::Scheme::new(hir::Type::Constructor(Definition::new("bool").use_reference())),
-                constructors: Default::default(),
-            }),
-        );
+        types.insert("int".into(), intrinsic_algebraic_data_type!(int));
+        types.insert("string".into(), intrinsic_algebraic_data_type!(int));
+        types.insert("bool".into(), intrinsic_algebraic_data_type!(bool));
         Self {
             file,
             text,

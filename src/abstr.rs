@@ -21,6 +21,7 @@ use crate::{
     loc::Identifier,
 };
 
+pub mod errors;
 pub mod pprint;
 pub mod typing;
 

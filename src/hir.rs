@@ -11,7 +11,7 @@ use std::{
 use fxhash::FxBuildHasher;
 
 use crate::{
-    abstr::{typing::TypeEnv, Definition, Reference},
+    abstr::{errors::UnificationError, typing::TypeEnv, Definition, Reference},
     loc::Loc,
 };
 
@@ -225,33 +225,6 @@ impl Hash for Variable {
     }
 }
 
-#[derive(Debug, thiserror::Error, miette::Diagnostic)]
-#[error("incompatible pattern type")]
-pub struct IncompatiblePatternTypeError;
-
-#[derive(Debug, thiserror::Error, miette::Diagnostic)]
-#[error("unresolved constructor: {name}")]
-pub struct UnresolvedConstructorError {
-    pub name: String,
-}
-
-#[derive(Debug, thiserror::Error, miette::Diagnostic)]
-#[error("application pattern in constructor")]
-pub struct ApplicationPatternInConstructorError;
-
-#[derive(Debug, Clone, thiserror::Error, miette::Diagnostic)]
-#[error("unification error")]
-pub enum UnificationError {
-    #[error("incompatible types: {0:?} and {1:?}")]
-    IncompatibleTypes(Type, Type),
-
-    #[error("incompatible constructors")]
-    IncompatibleConstructors(Reference, Reference),
-
-    #[error("occurs check between {name} and {type_repr:?}")]
-    OccursCheck { name: String, type_repr: Type },
-}
-
 impl Scheme {
     pub fn new(value: Type) -> Scheme {
         Scheme {
@@ -300,38 +273,6 @@ impl Type {
         match self {
             Type::Flexible(h) => h.value().unwrap_or(Type::Any),
             other => other,
-        }
-    }
-
-    pub fn replace(&mut self, name: &str, value: Type) {
-        use Type::*;
-        match self {
-            Pair(elements) | Tuple(elements) => {
-                for element in elements {
-                    element.replace(name, value.clone());
-                }
-            }
-            Fun(box domain, box codomain) => {
-                domain.replace(name, value.clone());
-                codomain.replace(name, value);
-            }
-            App(_, box argument) => {
-                argument.replace(name, value);
-            }
-            Local(box local) => {
-                local.replace(name, value);
-            }
-            Rigid(r) if r == name => {
-                *self = value;
-            }
-            Flexible(Variable(_, h)) => {
-                let hole_ref = &mut *h.write().unwrap();
-
-                if let Some(hole) = hole_ref.as_mut() {
-                    hole.replace(name, value);
-                }
-            }
-            Any | Constructor(_) | Rigid(_) => {}
         }
     }
 
@@ -402,8 +343,10 @@ impl Type {
         }
 
         let mut args = Vec::new();
-        let mono = go(&mut args, self);
-        Scheme { args, mono }
+        Scheme {
+            mono: go(&mut args, self),
+            args,
+        }
     }
 
     pub fn unify(self, rhs: Type) -> Result<(), UnificationError> {
@@ -412,23 +355,18 @@ impl Type {
 
         match (self, rhs) {
             (Any, _) | (_, Any) => Ok(()),
-            (Local(box lvar), Local(box rvar)) => lvar.unify(rvar),
-            (Constructor(lconstructor), Constructor(rconstructor)) if lconstructor == rconstructor => Ok(()),
-            (App(ln, box largument), App(rn, box rargument)) if ln == rn => largument.unify(rargument),
-            (App(ln, _), App(rn, _)) => Err(IncompatibleConstructors(ln, rn)),
-            (Fun(box ldom, box lcod), Fun(box rdom, box rcod)) => {
-                ldom.unify(rdom)?;
-                lcod.unify(rcod)
+            (Local(box l_var), Local(box r_var)) => l_var.unify(r_var),
+            (Constructor(l_con), Constructor(r_con)) if l_con.definition == r_con.definition => Ok(()),
+            (App(l_name, box l_arg), App(r_name, box r_arg)) if l_name.definition == r_name.definition => {
+                l_arg.unify(r_arg)
             }
-            (Pair(lelements), Pair(relements)) => {
-                for (lelement, relement) in lelements.into_iter().zip(relements.into_iter()) {
-                    lelement.unify(relement)?;
-                }
-                Ok(())
+            (Fun(box l_dom, box l_cod), Fun(box r_dom, box r_cod)) => {
+                l_dom.unify(r_dom)?;
+                l_cod.unify(r_cod)
             }
-            (Tuple(lelements), Tuple(relements)) => {
-                for (lelement, relement) in lelements.into_iter().zip(relements.into_iter()) {
-                    lelement.unify(relement)?;
+            (Pair(l_elements), Pair(r_elements)) | (Tuple(l_elements), Tuple(r_elements)) => {
+                for (lhs, rhs) in l_elements.into_iter().zip(r_elements.into_iter()) {
+                    lhs.unify(rhs)?;
                 }
                 Ok(())
             }
@@ -440,10 +378,9 @@ impl Type {
                     Ok(())
                 }
             },
-            (Constructor(lconstructor), Constructor(rconstructor)) => {
-                Err(IncompatibleConstructors(lconstructor, rconstructor))
-            }
-            (lhs, rhs) => Err(IncompatibleTypes(lhs, rhs)).unwrap(),
+            (App(l_name, _), App(r_name, _)) => Err(IncompatibleConstructors(l_name, r_name)),
+            (Constructor(l_con), Constructor(r_con)) => Err(IncompatibleConstructors(l_con, r_con)),
+            (lhs, rhs) => Err(IncompatibleTypes(lhs, rhs)),
         }
     }
 
