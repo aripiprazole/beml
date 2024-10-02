@@ -181,7 +181,7 @@ pub enum Term {
     Let(Arc<Definition>, Box<Term>, Box<Term>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Pattern {
     PatternSrcPos(Box<Pattern>, crate::loc::Loc),
     Constructor(Reference, Option<Box<Pattern>>),

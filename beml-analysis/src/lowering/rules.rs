@@ -304,10 +304,42 @@ pub mod pat {
 
 /// Lowering declarations uses mutable context to include the variables in the context.
 pub mod decl {
+    use abstr::HasNowhere;
+
     use super::*;
 
     #[allow(clippy::type_complexity)]
     pub struct Defer(pub Box<dyn FnOnce(&mut LoweringCtx) -> miette::Result<abstr::Decl>>);
+
+    fn desestruct(pattern: abstr::Pattern, scrutinee: abstr::Term) -> im_rc::HashMap<String, abstr::Term> {
+        fn ftv(pattern: &abstr::Pattern) -> im_rc::HashSet<Arc<abstr::Definition>> {
+            match pattern {
+                abstr::PatternSrcPos(box pattern, _) => ftv(pattern),
+                abstr::Variable(var) => {
+                    let mut vars = im_rc::HashSet::new();
+                    vars.insert(var.clone());
+                    vars
+                }
+                abstr::Constructor(_, parameters) => match parameters {
+                    Some(parameters) => ftv(parameters),
+                    None => im_rc::HashSet::new(),
+                },
+                abstr::Elements(elements) => elements.iter().flat_map(ftv).collect(),
+            }
+        }
+
+        let mut bindings = im_rc::HashMap::new();
+        for definition in ftv(&pattern) {
+            bindings.insert(
+                definition.name.text.clone(),
+                abstr::Match(scrutinee.clone().into(), vec![abstr::Case {
+                    pattern: pattern.clone(),
+                    body: abstr::Var(definition.use_at(&HasNowhere)),
+                }]),
+            );
+        }
+        bindings
+    }
 
     pub fn lower_decl(ctx: &mut LoweringCtx, term: Term) -> miette::Result<Defer> {
         Ok(match term {
@@ -371,6 +403,10 @@ pub mod decl {
                         }
                         _ => {
                             let new_var = ctx.new_fresh_variable();
+                            for (name, case) in desestruct(pattern.clone(), abstr::Var(new_var.clone().use_at(ctx))) {
+                                ctx.lets.insert(name, case);
+                            }
+
                             Ok(abstr::Decl::LetDecl(abstr::LetDecl {
                                 def: new_var.clone(),
                                 type_repr: fun_type,

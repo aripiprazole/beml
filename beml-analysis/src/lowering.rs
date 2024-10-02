@@ -19,10 +19,11 @@ pub struct LoweringCtx {
     pub(crate) src_pos: Loc,
     pub(crate) errors: Rc<RefCell<Vec<miette::Report>>>,
     pub(crate) data: Source,
-    variables: im_rc::HashMap<String, Arc<abstr::Definition>, FxBuildHasher>,
-    constructors: im_rc::HashMap<String, Arc<abstr::Definition>, FxBuildHasher>,
-    types: im_rc::HashMap<String, Arc<abstr::Definition>, FxBuildHasher>,
-    counter: Rc<Cell<usize>>,
+    pub(crate) lets: im_rc::HashMap<String, abstr::Term, FxBuildHasher>,
+    pub(crate) variables: im_rc::HashMap<String, Arc<abstr::Definition>, FxBuildHasher>,
+    pub(crate) constructors: im_rc::HashMap<String, Arc<abstr::Definition>, FxBuildHasher>,
+    pub(crate) types: im_rc::HashMap<String, Arc<abstr::Definition>, FxBuildHasher>,
+    pub(crate) counter: Rc<Cell<usize>>,
     #[cfg(debug_assertions)]
     gas: Rc<Cell<usize>>,
 }
@@ -38,6 +39,7 @@ impl LoweringCtx {
 
         Self {
             data,
+            lets: Default::default(),
             src_pos: beml_tree::loc::Loc::default(),
             variables: Default::default(),
             constructors: Default::default(),

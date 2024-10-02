@@ -1,8 +1,9 @@
 #![feature(box_patterns)]
 
 use beml_tree::{
-    abstr::Declaration,
+    abstr::{self, Declaration, Definition},
     errors::{CompilerPass, StepFailedError},
+    loc::{Identifier, Loc},
 };
 
 pub mod lowering;
@@ -53,6 +54,18 @@ pub fn lower_to_abstr(file: beml_tree::concr::File) -> miette::Result<beml_tree:
         let decl = f(&mut ctx)?;
 
         declarations.insert(decl.name().name.clone(), decl);
+    }
+
+    for (name, term) in ctx.lets {
+        declarations.insert(
+            Identifier::new(&name, Loc::Nowhere),
+            abstr::Decl::LetDecl(abstr::LetDecl {
+                def: Definition::new(&name),
+                type_repr: abstr::TypeRepr::Hole,
+                body: abstr::Body::Value(term),
+                loc: Loc::Nowhere,
+            }),
+        );
     }
 
     if ctx.errors.borrow().is_empty() {
