@@ -499,88 +499,23 @@ pub mod decl {
 
 #[cfg(test)]
 mod tests {
+    use expect_test::expect;
+
     use super::*;
 
     #[test]
     fn test_let_f_x_in_x() {
         let ctx = LoweringCtx::new(Source::from(""));
-        beml_tree::golden_test! {
-            expected:
-r#"Ok(
-    Match(
-        Ascription(
-            Fun(
-                Definition {
-                    name: Identifier {
-                        text: "_1",
-                        loc: Nowhere,
-                    },
-                    references: RefCell {
-                        value: [
-                            Identifier { text: "_1", loc: Nowhere },
-                        ],
-                    },
-                    loc: Nowhere,
-                },
-                Match(
-                    Var(
-                        Identifier { text: "_1", loc: Nowhere },
-                    ),
-                    [
-                        Case {
-                            pattern: Variable(
-                                Definition {
-                                    name: Identifier {
-                                        text: "x",
-                                        loc: Nowhere,
-                                    },
-                                    references: RefCell {
-                                        value: [
-                                            Identifier { text: "x", loc: Nowhere },
-                                        ],
-                                    },
-                                    loc: Nowhere,
-                                },
-                            ),
-                            body: Var(
-                                Identifier { text: "x", loc: Nowhere },
-                            ),
-                        },
-                    ],
-                ),
-            ),
-            Fun(
-                Hole,
-                Hole,
-            ),
-        ),
-        [
-            Case {
-                pattern: Variable(
-                    Definition {
-                        name: Identifier {
-                            text: "f",
-                            loc: Nowhere,
-                        },
-                        references: RefCell {
-                            value: [
-                                Identifier { text: "f", loc: Nowhere },
-                            ],
-                        },
-                        loc: Nowhere,
-                    },
-                ),
-                body: Var(
-                    Identifier { text: "f", loc: Nowhere },
-                ),
-            },
-        ],
-    ),
-)"#,
-            input: lower_term(ctx, Let(Let { pattern: Term::Var("f".into()).into(),
-                                             parameters: vec![Term::Var("x".into())],
-                                             body: Term::Var("x".into()).into(),
-                                             next: Term::Var("f".into()).into() }))
-        }
+        let actual = lower_term(
+            ctx,
+            Let(Let {
+                pattern: Term::Var("f".into()).into(),
+                parameters: vec![Term::Var("x".into())],
+                body: Term::Var("x".into()).into(),
+                next: Term::Var("f".into()).into(),
+            }),
+        );
+        let expected = expect![[]];
+        expected.assert_debug_eq(&actual);
     }
 }

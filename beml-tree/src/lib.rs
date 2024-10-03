@@ -4,7 +4,6 @@
 #![feature(box_patterns)]
 
 pub mod abstr;
-pub mod aux;
 pub mod concr;
 pub mod errors;
 pub mod hir;

@@ -10,3 +10,4 @@ beml-tree = { path = "../beml-tree" }
 clap = { version = "4.5.18", features = ["derive"] }
 miette = { version = "7.2.0", features = ["fancy"] }
 logos = "0.14.2"
+expect-test = "1.5.0"
