@@ -198,7 +198,7 @@ fn factor(p: &mut Parser, level: Lvl, stop_by: &[Token]) -> miette::Result<Term>
     let mut lhs = recover!(p, app(p, level, stop_by));
     while p.at_any(&[Token::Star, Token::Div]) {
         let (Some(k), text, loc) = (p.curr, p.text(), p.loc()) else {
-            Err(Eof)?
+            Err(EofError)?
         };
         let op = match (level, k) {
             (Lvl::Type, Token::Star) => BinOp::Star,

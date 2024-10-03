@@ -126,7 +126,7 @@ impl<'a> Parser<'a> {
             self.bump();
             Ok((text, span))
         } else {
-            Err(ExpectedToken {
+            Err(ExpectedTokenError {
                 token: token.to_string(),
                 span,
                 actual: self.curr.unwrap_or(Token::Skip).to_string(),
@@ -142,7 +142,7 @@ impl<'a> Parser<'a> {
             endpos: range.end,
             path: self.data.clone(),
         };
-        Err(UnexpectedToken {
+        Err(UnexpectedTokenError {
             actual: self.curr.unwrap_or(Token::Skip).to_string(),
             possibilities: possibilities.iter().map(|t| t.to_string()).collect(),
             span,
@@ -162,7 +162,7 @@ impl<'a> Parser<'a> {
     pub fn next(&mut self) -> miette::Result<(Token, &str, beml_tree::loc::Loc)> {
         self.bump();
         let Some(token) = self.curr else {
-            return Err(Eof)?;
+            return Err(EofError)?;
         };
         let text = self.lexer.slice();
         Ok((token, text, self.loc()))
