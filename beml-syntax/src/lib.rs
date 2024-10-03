@@ -70,8 +70,8 @@ macro_rules! recover {
     ($p:expr, $expr:expr) => {
         match $expr {
             Ok(value) => value,
-            Err(err) => match err.downcast_ref::<Eof>() {
-                Some(_) => return miette::IntoDiagnostic::into_diagnostic(Err(Eof)),
+            Err(err) => match err.downcast_ref::<EofError>() {
+                Some(_) => return miette::IntoDiagnostic::into_diagnostic(Err(EofError)),
                 None => {
                     $p.report(err);
                     $p.bump();

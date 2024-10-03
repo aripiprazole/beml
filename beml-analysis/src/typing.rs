@@ -6,7 +6,7 @@ use std::{
 use beml_tree::{
     abstr::*,
     errors::{
-        abstr::{IncompatiblePatternTypeError, UnresolvedConstructorError, UnresolvedVariableError},
+        abstr::{BinaryError, IncompatiblePatternTypeError, UnresolvedConstructorError, UnresolvedVariableError},
         LoweringError,
     },
     hir::{self, Environment, Scheme, Typeable},
@@ -661,11 +661,23 @@ impl TypeEnv {
 
     /// Unifies two types, and reports an error if it fails.
     pub fn unify_catch<A: Typeable, B: Typeable>(&self, lhs: &A, rhs: &B) {
+        let l_location = lhs.src_pos().unwrap_or_else(|| self.src_pos.clone());
+        let r_location = rhs.src_pos().unwrap_or_else(|| self.src_pos.clone());
+
         let lhs = lhs.type_of();
         let rhs = rhs.type_of();
+
         tracing::trace!("unify_catch: {:?}, {:?}", lhs, rhs);
-        if let Err(err) = lhs.unify(rhs) {
-            self.report(err);
+        if let Err(error) = lhs.unify(rhs) {
+            if l_location != r_location {
+                self.report(BinaryError {
+                    lhs: l_location,
+                    rhs: r_location,
+                    error,
+                });
+            } else {
+                self.report(error);
+            }
         }
     }
 

@@ -16,6 +16,4 @@ let map f = function
 
 let () =
   let _ = map (fun x -> x + 1) [1, 2, 3] in
-  let i = Int (1 + 2) in
-  let a = App (i, i) in
   ()

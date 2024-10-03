@@ -80,7 +80,10 @@ impl TryFrom<PathBuf> for Source {
 
 impl SourceCode for Source {
     fn read_span<'a>(
-        &'a self, span: &SourceSpan, context_lines_before: usize, context_lines_after: usize,
+        &'a self,
+        span: &SourceSpan,
+        context_lines_before: usize,
+        context_lines_after: usize,
     ) -> Result<Box<dyn miette::SpanContents<'a> + 'a>, miette::MietteError> {
         self.source.read_span(span, context_lines_before, context_lines_after)
     }

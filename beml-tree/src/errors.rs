@@ -49,7 +49,21 @@ pub enum CompilerPass {
 
 /// Errors related to the abstract syntax tree.
 pub mod abstr {
-    use crate::{abstr::Reference, hir::Type};
+    use crate::{abstr::Reference, hir::Type, loc::Loc};
+
+    /// Binary error, used to report errors that occur during the binary operation.
+    #[derive(Debug, thiserror::Error, miette::Diagnostic)]
+    #[error("{error}")]
+    pub struct BinaryError<E: miette::Diagnostic + std::error::Error + Send + Sync + 'static> {
+        #[label = "this"]
+        pub lhs: Loc,
+
+        #[label = "that"]
+        pub rhs: Loc,
+
+        #[source]
+        pub error: E,
+    }
 
     /// The type checker can not find the specified variable, maybe check the context,
     /// or the spelling of the variable.

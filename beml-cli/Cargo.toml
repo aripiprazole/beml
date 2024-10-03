@@ -3,9 +3,9 @@ name = "beml-cli"
 version = "0.1.0"
 edition = "2021"
 
-[lib]
+[[bin]]
 name = "beml"
-path = "src/lib.rs"
+path = "src/main.rs"
 
 [dependencies]
 backtrace-on-stack-overflow = "0.3.0"

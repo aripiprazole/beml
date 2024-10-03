@@ -27,8 +27,11 @@ pub struct Term {
     pub type_repr: Type,
 }
 
-/// Means that something can be typed.
+/// Means that something can be typed. It does have a maybe location
+/// and a type.
 pub trait Typeable {
+    fn src_pos(&self) -> Option<Loc>;
+
     fn type_of(&self) -> Type;
 }
 
@@ -36,11 +39,19 @@ impl Typeable for Type {
     fn type_of(&self) -> Type {
         self.clone()
     }
+
+    fn src_pos(&self) -> Option<Loc> {
+        None
+    }
 }
 
 impl Typeable for Term {
     fn type_of(&self) -> Type {
         self.type_repr.clone()
+    }
+
+    fn src_pos(&self) -> Option<Loc> {
+        Some(self.src_pos.clone())
     }
 }
 
@@ -313,7 +324,9 @@ impl Type {
 
     /// Creates a new type from an abstract syntax tree with type variables.
     pub fn new_with_args(
-        vars: &im_rc::HashMap<String, Type>, env: &impl Environment, abstr: crate::abstr::TypeRepr,
+        vars: &im_rc::HashMap<String, Type>,
+        env: &impl Environment,
+        abstr: crate::abstr::TypeRepr,
     ) -> Self {
         use crate::abstr::TypeRepr::*;
         match abstr {
