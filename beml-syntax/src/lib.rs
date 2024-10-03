@@ -34,7 +34,7 @@ pub struct Parser<'a> {
 
 /// Parse a file with a text.
 pub fn parse_file(source: Source) -> miette::Result<File> {
-    let text = source.text.clone();
+    let text = source.get_text().clone();
     let mut p = Parser {
         lexer: Token::lexer(&text),
         data: source,

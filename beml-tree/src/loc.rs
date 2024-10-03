@@ -29,8 +29,17 @@ impl Debug for Loc {
 /// Source code location.
 #[derive(Debug, Clone)]
 pub struct Source {
-    source: Arc<NamedSource>,
-    pub text: Arc<str>,
+    source: NamedSource<Arc<String>>,
+}
+
+impl Source {
+    pub fn text(&self) -> &str {
+        self.source.inner()
+    }
+
+    pub fn get_text(&self) -> String {
+        self.source.inner().to_string()
+    }
 }
 
 impl Hash for Source {
@@ -50,8 +59,7 @@ impl PartialEq for Source {
 impl From<&str> for Source {
     fn from(text: &str) -> Self {
         Self {
-            source: NamedSource::new("synthetic source", text.to_string()).into(),
-            text: text.into(),
+            source: NamedSource::new("synthetic source", Arc::new(text.to_string())).with_language("beml"),
         }
     }
 }
@@ -59,8 +67,7 @@ impl From<&str> for Source {
 impl From<String> for Source {
     fn from(text: String) -> Self {
         Self {
-            source: NamedSource::new("synthetic source", text.clone()).into(),
-            text: text.into(),
+            source: NamedSource::new("synthetic source", Arc::new(text.clone())).with_language("beml"),
         }
     }
 }
@@ -70,11 +77,8 @@ impl TryFrom<PathBuf> for Source {
 
     fn try_from(value: PathBuf) -> Result<Self, Self::Error> {
         let text = std::fs::read_to_string(&value).into_diagnostic()?;
-        let source = NamedSource::new(value.to_str().unwrap_or(""), text.clone());
-        Ok(Self {
-            text: text.into(),
-            source: source.into(),
-        })
+        let source = NamedSource::new(value.to_str().unwrap_or(""), Arc::new(text.clone())).with_language("beml");
+        Ok(Self { source })
     }
 }
 
@@ -93,10 +97,10 @@ impl SourceCode for Source {
 impl From<Loc> for SourceSpan {
     fn from(value: Loc) -> Self {
         match value {
-            Loc::Nowhere => Self::new(SourceOffset::from(0), 0.into()),
+            Loc::Nowhere => Self::new(SourceOffset::from(0), 0),
             Loc::Loc { startpos, endpos, .. } => {
                 let length = endpos - startpos;
-                Self::new(SourceOffset::from(startpos), length.into())
+                Self::new(SourceOffset::from(startpos), length)
             }
         }
     }

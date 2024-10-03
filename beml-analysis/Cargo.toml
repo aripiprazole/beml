@@ -9,5 +9,5 @@ fxhash = "0.2.1"
 im = "15.1.0"
 im-rc = "15.1.0"
 thiserror = "1.0.64"
-miette = { version = "5.10.0", features = ["fancy"] }
+miette = { version = "7.2.0", features = ["fancy"] }
 tracing = "0.1.40"

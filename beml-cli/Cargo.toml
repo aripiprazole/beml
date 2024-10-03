@@ -9,9 +9,10 @@ path = "src/main.rs"
 
 [dependencies]
 backtrace-on-stack-overflow = "0.3.0"
-bupropion = "0.0.18"
+bupropion = "0.0.20"
 beml-analysis = { path = "../beml-analysis" }
 beml-syntax = { path = "../beml-syntax" }
 beml-tree = { path = "../beml-tree" }
 clap = { version = "4.5.18", features = ["derive"] }
-miette = { version = "5.10.0", features = ["fancy"] }
+miette = { version = "7.2.0", features = ["fancy"] }
+thiserror = "1.0.64"

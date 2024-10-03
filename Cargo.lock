@@ -121,7 +121,7 @@ dependencies = [
  "fxhash",
  "im",
  "im-rc",
- "miette",
+ "miette 7.2.0",
  "thiserror",
  "tracing",
 ]
@@ -134,9 +134,10 @@ dependencies = [
  "beml-analysis",
  "beml-syntax",
  "beml-tree",
- "bupropion",
+ "bupropion 0.0.20",
  "clap",
- "miette",
+ "miette 7.2.0",
+ "thiserror",
 ]
 
 [[package]]
@@ -145,10 +146,10 @@ version = "0.1.0"
 dependencies = [
  "backtrace-on-stack-overflow",
  "beml-tree",
- "bupropion",
+ "bupropion 0.0.18",
  "clap",
  "logos",
- "miette",
+ "miette 7.2.0",
 ]
 
 [[package]]
@@ -158,7 +159,7 @@ dependencies = [
  "fxhash",
  "im",
  "im-rc",
- "miette",
+ "miette 7.2.0",
  "thiserror",
  "tracing",
 ]
@@ -168,6 +169,12 @@ name = "bitflags"
 version = "1.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
+
+[[package]]
+name = "bitflags"
+version = "2.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b048fb63fd8b5923fc5aa7b340d8e156aec7ec02f0c78fa8a6ddc2613f6f71de"
 
 [[package]]
 name = "bitmaps"
@@ -186,11 +193,30 @@ checksum = "11507ec2c6fb4286d1d0031fb56657e4b1a81a8495c8f2bc929c1b8e8be6b6cc"
 dependencies = [
  "backtrace",
  "backtrace-ext",
- "miette",
- "owo-colors",
- "supports-color",
- "supports-hyperlinks",
- "supports-unicode",
+ "miette 5.10.0",
+ "owo-colors 3.5.0",
+ "supports-color 2.1.0",
+ "supports-hyperlinks 2.1.0",
+ "supports-unicode 2.1.0",
+ "terminal_size 0.2.6",
+ "textwrap 0.16.1",
+ "thiserror",
+ "unicode-width",
+]
+
+[[package]]
+name = "bupropion"
+version = "0.0.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5bd2557eacd6b2a878419118b6b5dda807d5f4993a82ff096b97d15caf723b6e"
+dependencies = [
+ "backtrace",
+ "backtrace-ext",
+ "miette 7.2.0",
+ "owo-colors 4.1.0",
+ "supports-color 2.1.0",
+ "supports-hyperlinks 2.1.0",
+ "supports-unicode 2.1.0",
  "terminal_size 0.2.6",
  "textwrap 0.16.1",
  "thiserror",
@@ -394,6 +420,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ef53942eb7bf7ff43a617b3e2c1c4a5ecf5944a7c1bc12d7ee39bbb15e5c1519"
 
 [[package]]
+name = "linux-raw-sys"
+version = "0.4.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "78b3ae25bc7c8c38cec158d1f2757ee79e9b3740fbc7ccf0e59e4b08d793fa89"
+
+[[package]]
 name = "logos"
 version = "0.14.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -450,14 +482,34 @@ dependencies = [
  "backtrace",
  "backtrace-ext",
  "is-terminal",
- "miette-derive",
+ "miette-derive 5.10.0",
  "once_cell",
- "owo-colors",
- "supports-color",
- "supports-hyperlinks",
- "supports-unicode",
+ "owo-colors 3.5.0",
+ "supports-color 2.1.0",
+ "supports-hyperlinks 2.1.0",
+ "supports-unicode 2.1.0",
  "terminal_size 0.1.17",
  "textwrap 0.15.2",
+ "thiserror",
+ "unicode-width",
+]
+
+[[package]]
+name = "miette"
+version = "7.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4edc8853320c2a0dab800fbda86253c8938f6ea88510dc92c5f1ed20e794afc1"
+dependencies = [
+ "backtrace",
+ "backtrace-ext",
+ "cfg-if",
+ "miette-derive 7.2.0",
+ "owo-colors 4.1.0",
+ "supports-color 3.0.1",
+ "supports-hyperlinks 3.0.0",
+ "supports-unicode 3.0.0",
+ "terminal_size 0.3.0",
+ "textwrap 0.16.1",
  "thiserror",
  "unicode-width",
 ]
@@ -467,6 +519,17 @@ name = "miette-derive"
 version = "5.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "49e7bc1560b95a3c4a25d03de42fe76ca718ab92d1a22a55b9b4cf67b3ae635c"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "miette-derive"
+version = "7.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dcf09caffaac8068c346b6df2a7fc27a177fd20b39421a39ce0a211bde679a6c"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -488,7 +551,7 @@ version = "0.23.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f3790c00a0150112de0f4cd161e3d7fc4b2d8a5542ffc35f099a2562aecb35c"
 dependencies = [
- "bitflags",
+ "bitflags 1.3.2",
  "cc",
  "cfg-if",
  "libc",
@@ -515,6 +578,12 @@ name = "owo-colors"
 version = "3.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c1b04fb49957986fdce4d6ee7a65027d55d4b6d2265e5848bbb507b58ccfdb6f"
+
+[[package]]
+name = "owo-colors"
+version = "4.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fb37767f6569cd834a413442455e0f066d0d522de8630436e2a1761d9726ba56"
 
 [[package]]
 name = "pin-project-lite"
@@ -573,12 +642,25 @@ version = "0.37.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fea8ca367a3a01fe35e6943c400addf443c0f57670e6ec51196f71a4b8762dd2"
 dependencies = [
- "bitflags",
+ "bitflags 1.3.2",
  "errno",
  "io-lifetimes",
  "libc",
- "linux-raw-sys",
+ "linux-raw-sys 0.3.8",
  "windows-sys 0.48.0",
+]
+
+[[package]]
+name = "rustix"
+version = "0.38.37"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8acb788b847c24f28525660c4d7758620a7210875711f79e7f663cc152726811"
+dependencies = [
+ "bitflags 2.6.0",
+ "errno",
+ "libc",
+ "linux-raw-sys 0.4.14",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -620,6 +702,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "supports-color"
+version = "3.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8775305acf21c96926c900ad056abeef436701108518cf890020387236ac5a77"
+dependencies = [
+ "is_ci",
+]
+
+[[package]]
 name = "supports-hyperlinks"
 version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -629,6 +720,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "supports-hyperlinks"
+version = "3.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2c0a1e5168041f5f3ff68ff7d95dcb9c8749df29f6e7e89ada40dd4c9de404ee"
+
+[[package]]
 name = "supports-unicode"
 version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -636,6 +733,12 @@ checksum = "f850c19edd184a205e883199a261ed44471c81e39bd95b1357f5febbef00e77a"
 dependencies = [
  "is-terminal",
 ]
+
+[[package]]
+name = "supports-unicode"
+version = "3.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b7401a30af6cb5818bb64852270bb722533397edcfc7344954a38f420819ece2"
 
 [[package]]
 name = "syn"
@@ -664,7 +767,17 @@ version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8e6bf6f19e9f8ed8d4048dc22981458ebcf406d67e94cd422e5ecd73d63b3237"
 dependencies = [
- "rustix",
+ "rustix 0.37.27",
+ "windows-sys 0.48.0",
+]
+
+[[package]]
+name = "terminal_size"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "21bebf2b7c9e0a515f6e0f8c51dc0f8e4696391e6f1ff30379559f8365fb0df7"
+dependencies = [
+ "rustix 0.38.37",
  "windows-sys 0.48.0",
 ]
 

@@ -2,7 +2,6 @@ use std::path::PathBuf;
 
 use beml_tree::loc::Source;
 use clap::Parser;
-use miette::IntoDiagnostic;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -12,12 +11,6 @@ pub struct Args {
 
 /// The main entry point for the application.
 pub fn program() -> miette::Result<()> {
-    bupropion::install(|| {
-        // Build the bupropion handler options, for specific
-        // error presenting.
-        bupropion::BupropionHandlerOpts::new()
-    })
-    .into_diagnostic()?;
     let args = Args::parse();
     let file = Source::try_from(PathBuf::from(args.main))?;
     let file = beml_syntax::parse_file(file)?;
@@ -31,10 +24,17 @@ pub fn program() -> miette::Result<()> {
 fn main() {
     unsafe { backtrace_on_stack_overflow::enable() };
 
+    bupropion::install(|| {
+        // Build the bupropion handler options, for specific
+        // error presenting.
+        bupropion::BupropionHandlerOpts::new().width(240)
+    })
+    .expect("failed to install bupropion handler");
+
     // Avoid printing print `Error: ` before the error message
     // to maintain the language beauty!
     if let Err(e) = program() {
-        eprintln!("{e:?}");
+        println!("{e:?}");
         std::process::exit(1);
     }
 }

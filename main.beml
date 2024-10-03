@@ -15,5 +15,5 @@ let map f = function
   | Cons (x, xs) => Cons (f x, map f xs)
 
 let () =
-  let _ = map (fun x -> x + 1) [1, 2, 3] in
+  let _ = map (fun x -> x + []) [1, 2, 3] in
   ()
